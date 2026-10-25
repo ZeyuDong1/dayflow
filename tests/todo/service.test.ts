@@ -126,3 +126,58 @@ describe('TaskService.deleteTask / deleteAllTasks', () => {
     expect(db.all('SELECT * FROM timers')).toHaveLength(0)
   })
 })
+
+describe('side focus', () => {
+  it('上限 2：满员返回 false 且不改动', () => {
+    const a = svc.createTask('副A', { skipDedup: true })
+    const b = svc.createTask('副B', { skipDedup: true })
+    const c = svc.createTask('副C', { skipDedup: true })
+    expect(svc.setSideFocus(a.id, true)).toBe(true)
+    expect(svc.setSideFocus(b.id, true)).toBe(true)
+    expect(svc.setSideFocus(c.id, true)).toBe(false)
+    expect(svc.getTask(c.id)!.is_side_focus).toBe(0)
+    expect(svc.setSideFocus(a.id, false)).toBe(true) // 释放后可再设
+    expect(svc.setSideFocus(c.id, true)).toBe(true)
+  })
+
+  it('archived/active 带旗任务不占额度', () => {
+    const a = svc.createTask('占位A', { skipDedup: true })
+    const b = svc.createTask('占位B', { skipDedup: true })
+    const c = svc.createTask('占位C', { skipDedup: true })
+    const d = svc.createTask('占位D', { skipDedup: true })
+    expect(svc.setSideFocus(a.id, true)).toBe(true)
+    expect(svc.setSideFocus(b.id, true)).toBe(true)
+    expect(svc.setSideFocus(c.id, true)).toBe(false) // 满员
+    svc.updateTask(a.id, { status: 'active' }) // A 升主焦点 → 释放额度
+    expect(svc.setSideFocus(c.id, true)).toBe(true)
+    svc.updateTask(b.id, { status: 'archived' }) // 归档也释放额度
+    expect(svc.setSideFocus(d.id, true)).toBe(true)
+  })
+
+  it('pickSideFocusPromotion 排序键：历史新者优先，无历史按最早打旗，NULL 视为最老', () => {
+    const t1 = svc.createTask('p1', { skipDedup: true })
+    const t2 = svc.createTask('p2', { skipDedup: true })
+    const t3 = svc.createTask('p3', { skipDedup: true })
+    const t4 = svc.createTask('p4', { skipDedup: true })
+    svc.updateTask(t1.id, { last_focused_at: '2026-01-02T00:00:00.000Z', side_focus_at: '2026-01-01T00:00:00.000Z', is_side_focus: 1 })
+    svc.updateTask(t2.id, { last_focused_at: '2026-01-01T00:00:00.000Z', side_focus_at: '2026-01-02T00:00:00.000Z', is_side_focus: 1 })
+    svc.updateTask(t3.id, { last_focused_at: null, side_focus_at: '2026-01-03T00:00:00.000Z', is_side_focus: 1 })
+    svc.updateTask(t4.id, { last_focused_at: null, side_focus_at: '2026-01-04T00:00:00.000Z', is_side_focus: 1 })
+    // 有历史组：t1(01-02) 新于 t2(01-01)；无历史组：t3(01-03) 早于 t4(01-04)
+    expect(svc.pickSideFocusPromotion(0)).toBe(t1.id)
+    expect(svc.pickSideFocusPromotion(t1.id)).toBe(t2.id)
+    expect(svc.pickSideFocusPromotion(t2.id)).toBe(t1.id)
+    svc.updateTask(t1.id, { status: 'archived' })
+    svc.updateTask(t2.id, { status: 'archived' })
+    expect(svc.pickSideFocusPromotion(0)).toBe(t3.id) // 无历史组按最早打旗
+  })
+
+  it('pickSideFocusPromotion 排除 excludeId 与 archived/active', () => {
+    const t = svc.createTask('单', { skipDedup: true })
+    svc.updateTask(t.id, { is_side_focus: 1, side_focus_at: '2026-01-01T00:00:00.000Z' })
+    expect(svc.pickSideFocusPromotion(t.id)).toBeNull()
+    expect(svc.pickSideFocusPromotion(0)).toBe(t.id)
+    svc.updateTask(t.id, { status: 'archived' })
+    expect(svc.pickSideFocusPromotion(0)).toBeNull()
+  })
+})

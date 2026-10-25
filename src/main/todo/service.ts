@@ -136,6 +136,39 @@ export class TaskService {
     this.db.run('DELETE FROM tasks')
   }
 
+  /** 副焦点（◎，最多 2 个）：archived/active 的带旗任务不占额度；满员返回 false 不改动。 */
+  setSideFocus(id: number, enabled: boolean): boolean {
+    const task = this.getTask(id)
+    if (!task) return false
+    if (!enabled) {
+      this.db.run('UPDATE tasks SET is_side_focus = 0 WHERE id = ?', [id])
+      return true
+    }
+    const used = this.db.get<{ n: number }>(
+      `SELECT COUNT(*) AS n FROM tasks WHERE is_side_focus = 1 AND status NOT IN ('archived','active') AND id != ?`,
+      [id],
+    )
+    if ((used?.n ?? 0) >= 2) return false
+    this.db.run('UPDATE tasks SET is_side_focus = 1, side_focus_at = ? WHERE id = ?', [
+      new Date().toISOString(),
+      id,
+    ])
+    return true
+  }
+
+  /** 晋升替补：有专注历史者优先（最近者先），无历史者按最早打旗（NULL 时间戳视为最老）。 */
+  pickSideFocusPromotion(excludeId: number): number | null {
+    const rows = this.db.all<{ id: number }>(
+      `SELECT id FROM tasks
+       WHERE is_side_focus = 1 AND status NOT IN ('archived','active') AND id != ?
+       ORDER BY (last_focused_at IS NULL) ASC, last_focused_at DESC,
+                (side_focus_at IS NULL) ASC, side_focus_at ASC
+       LIMIT 1`,
+      [excludeId],
+    )
+    return rows[0]?.id ?? null
+  }
+
   private collectSubtree(id: number): number[] {
     const out: number[] = []
     const visited = new Set<number>()
