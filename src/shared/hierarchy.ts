@@ -82,3 +82,24 @@ export function getAncestorChain<T extends { id: number; parent_id: number | nul
   }
   return chain
 }
+
+/**
+ * 面包屑能放下几级（Overlay 用）。levelWidths 顺序 root→父；
+ * 从最近的父开始逐级加入，放不下即停（全有或全无，不截半级）。
+ */
+export function fitBreadcrumbLevels(
+  titleWidth: number,
+  levelWidths: number[],
+  sepWidth: number,
+  availableWidth: number,
+): number {
+  let used = titleWidth
+  let count = 0
+  for (let i = levelWidths.length - 1; i >= 0; i--) {
+    const cost = sepWidth + levelWidths[i]
+    if (used + cost > availableWidth) break
+    used += cost
+    count++
+  }
+  return count
+}

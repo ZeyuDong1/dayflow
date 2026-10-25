@@ -302,6 +302,13 @@ const api = {
     focusToday: (): Promise<number> => ipcRenderer.invoke('todo:focus-today'),
     getGpus: (): Promise<(import('../shared/todo-types').GpuRow & { activeTaskId: number | null })[]> =>
       ipcRenderer.invoke('todo:get-gpus'),
+    getSettings: (): Promise<unknown> => ipcRenderer.invoke('todo:get-settings'),
+    setOverlayIgnoreMouse: (ignore: boolean): void => {
+      ipcRenderer.send('todo:set-overlay-ignore-mouse', ignore)
+    },
+    resetOverlayPosition: (): void => {
+      ipcRenderer.send('todo:reset-overlay-position')
+    },
     execCommand: (
       parsed: import('../shared/commands').ParsedCommand,
       ctx: { activeTaskId?: number | null; highlightedId?: number | null; suggestionIds?: number[] },

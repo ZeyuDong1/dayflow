@@ -27,16 +27,45 @@ describe('todo schema', () => {
 })
 
 describe('todo settings', () => {
-  it('默认值：nag 15、quiet 23→8、idle 15、stalled 5/10（分钟）', async () => {
+  it('默认值：nag 15、quiet 23→8、idle 15、stalled 5/10（分钟）+ overlay 默认', async () => {
     const db = await createMemDb()
     expect(getTodoSettings(db)).toEqual(DEFAULT_TODO_SETTINGS)
-    expect(DEFAULT_TODO_SETTINGS).toEqual({
-      reminder_nag_interval: 15,
-      gpu_quiet_hours: { start: 23, end: 8 },
-      gpu_idle_interval: 15,
-      webhook_stalled_threshold: 5,
-      webhook_stalled_interval: 10,
+    expect(DEFAULT_TODO_SETTINGS.reminder_nag_interval).toBe(15)
+    expect(DEFAULT_TODO_SETTINGS.gpu_quiet_hours).toEqual({ start: 23, end: 8 })
+    expect(DEFAULT_TODO_SETTINGS.gpu_idle_interval).toBe(15)
+    expect(DEFAULT_TODO_SETTINGS.webhook_stalled_threshold).toBe(5)
+    expect(DEFAULT_TODO_SETTINGS.webhook_stalled_interval).toBe(10)
+    expect(DEFAULT_TODO_SETTINGS.overlay_settings).toEqual({
+      opacity: 80,
+      fontSize: 14,
+      color: '#ffffff',
+      mouseIgnore: true,
+      focusGlowEnabled: true,
+      focusGlowIntensity: 6,
+      focusGlowSpeed: 3,
+      sideGlowEnabled: true,
+      focusMarqueeEnabled: true,
+      focusMarqueeSpeed: 30,
+      sideMarqueeEnabled: true,
     })
+    expect(DEFAULT_TODO_SETTINGS.overlay_bounds).toEqual({ x: 100, y: 100, width: 350, height: 250 })
+  })
+
+  it('overlay 设置非法值回退（越界/坏色值/坏 bounds）', async () => {
+    const db = await createMemDb()
+    db.run('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)', [
+      'todo-settings',
+      JSON.stringify({
+        overlay_settings: { opacity: 5, fontSize: 99, color: 'red', focusGlowIntensity: 100 },
+        overlay_bounds: { x: 'x', y: 0, width: -1, height: 250 },
+      }),
+    ])
+    const s = getTodoSettings(db)
+    expect(s.overlay_settings.opacity).toBe(80)
+    expect(s.overlay_settings.fontSize).toBe(14)
+    expect(s.overlay_settings.color).toBe('#ffffff')
+    expect(s.overlay_settings.focusGlowIntensity).toBe(6)
+    expect(s.overlay_bounds).toEqual({ x: 100, y: 100, width: 350, height: 250 })
   })
 
   it('非法值回退默认（审查重点 #3：绝不返回 0 间隔）', async () => {

@@ -31,6 +31,8 @@ export interface TodoIpcDeps {
   saveSettings: (patch: DeepPartial<TodoSettings>) => TodoSettings
   hideReminder?: () => void
   hideSpotlight?: () => void
+  setOverlayIgnoreMouse?: (ignore: boolean) => void
+  resetOverlayPosition?: () => void
 }
 
 /** timer:start-focus 的副焦点轮换：清目标 side 标志；旧焦点非自身则尝试降级为副（满 2 静默跳过）。 */
@@ -126,6 +128,11 @@ export function registerTodoIpc(reg: IpcRegistry, deps: TodoIpcDeps): void {
   // Reminder 域
   reg.on('todo:reminder-hide', (() => deps.hideReminder?.()) as never)
   reg.on('todo:hide-spotlight', (() => deps.hideSpotlight?.()) as never)
+
+  // Overlay 域
+  reg.on('todo:set-overlay-ignore-mouse', ((_e: never, ignore: boolean) =>
+    deps.setOverlayIgnoreMouse?.(ignore)) as never)
+  reg.on('todo:reset-overlay-position', (() => deps.resetOverlayPosition?.()) as never)
   reg.on('todo:reminder-snooze', ((_e: never, taskId: number, minutes: number) => {
     timerManager.snoozeTrainingReminder(taskId, minutes)
     deps.hideReminder?.()

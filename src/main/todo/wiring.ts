@@ -20,6 +20,12 @@ import {
   registerSpotlightShortcut,
   unregisterShortcuts,
 } from './spotlight-window'
+import {
+  showOverlayWindow,
+  setOverlayIgnoreMouse,
+  resetOverlayPosition,
+  setBoundsPersister,
+} from './overlay-window'
 import { cleanupDraftTasks } from '../../shared/execute-command'
 
 export interface TodoRuntime {
@@ -85,9 +91,14 @@ export function createTodoRuntime(opts: { port?: number } = {}): TodoRuntime {
     saveSettings: (patch: DeepPartial<TodoSettings>) => saveTodoSettings(db, patch),
     hideReminder: () => hideReminderWindow(),
     hideSpotlight: () => hideSpotlight(),
+    setOverlayIgnoreMouse: (ignore: boolean) => setOverlayIgnoreMouse(ignore),
+    resetOverlayPosition: () => resetOverlayPosition(),
   }
   setDraftCleanup(() => {
     cleanupDraftTasks(tasks.getAllTasks(), (id) => tasks.deleteTask(id))
+  })
+  setBoundsPersister((b) => {
+    saveTodoSettings(db, { overlay_bounds: b })
   })
   registerTodoIpc(
     {
@@ -106,6 +117,7 @@ export function createTodoRuntime(opts: { port?: number } = {}): TodoRuntime {
     async start() {
       timerManager.start()
       registerSpotlightShortcut('Alt+Space', toggleSpotlight) // 失败仅记日志
+      showOverlayWindow(getSettings())
       try {
         await server.start()
       } catch {
