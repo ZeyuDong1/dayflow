@@ -2,6 +2,7 @@ import initSqlJs, { type Database, type Statement } from 'sql.js'
 import fs from 'fs'
 import path from 'path'
 import { getDbPath } from './paths'
+import { TODO_SCHEMA_SQL } from './todo/schema'
 
 /**
  * sql.js keeps the whole database in memory; we flush to disk after writes
@@ -212,6 +213,8 @@ class DB {
     } catch {
       // 列已存在
     }
+    // 任务域（EpochToDo 融合）：tasks/task_projects/timers/history/gpus
+    this.db!.exec(TODO_SCHEMA_SQL)
     this.dirty = true
     this.flush()
   }
