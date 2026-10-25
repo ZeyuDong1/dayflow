@@ -10,10 +10,32 @@ import type { GpuService } from './gpu-service'
 import type { TodoSettings } from './settings'
 import type { TaskRow, TimerRow } from '../../shared/todo-types'
 
+/** 训练遥测内存条目（webhook/wandb 喂入，健康检查消费；不落库） */
+export interface TrainingStatusRecord {
+  taskId: number
+  gpuName: string
+  modelName?: string
+  eta?: string
+  metrics?: Record<string, unknown>
+  lastUpdated: number
+  stalled: boolean
+  lastReminded: number
+  source: 'wandb' | 'webhook'
+  wandbUrl?: string
+}
+
+/** 合成提醒伪任务（停滞/GPU 空闲告警） */
+export interface SyntheticTask {
+  id: number
+  title: string
+  context_memo: string | null
+  type: string
+}
+
 export type TimerEvent =
   | { type: 'timer:update' }
-  | { type: 'timer:ended'; taskId: number; task: TaskRow | null }
-  | { type: 'timer:training-update'; status: unknown }
+  | { type: 'timer:ended'; taskId: number; task: TaskRow | SyntheticTask | null }
+  | { type: 'timer:training-update'; status: TrainingStatusRecord }
   | { type: 'fetch-tasks' }
 
 export interface TimerDeps {
@@ -33,6 +55,11 @@ const FOCUS_MIN_ACCOUNTING_SECONDS = 180
 
 export class TimerManager {
   private waitTimers = new Map<number, unknown>()
+  /** 训练遥测内存条目（webhook/wandb 喂入） */
+  readonly trainingStatus = new Map<number, TrainingStatusRecord>()
+  private idleAlertAt = 0
+  private healthInterval: unknown = null
+  private reconcileTimeout: unknown = null
 
   constructor(private deps: TimerDeps) {}
 
@@ -270,5 +297,169 @@ export class TimerManager {
       db.run(`DELETE FROM timers WHERE task_id IN (${marks})`, archived)
     }
     broadcast({ type: 'fetch-tasks' })
+  }
+
+  // ---------- 遥测条目（P2 webhook / P4 wandb 喂入） ----------
+
+  upsertTrainingStatus(rec: TrainingStatusRecord): void {
+    this.trainingStatus.set(rec.taskId, rec)
+  }
+
+  removeTrainingStatus(taskId: number): void {
+    this.trainingStatus.delete(taskId)
+  }
+
+  // ---------- 常驻检查（60s 循环 + 启动对账） ----------
+
+  /** 启动：GPU 空闲状态修复 + 60s 健康检查循环 + 3 分钟后对账僵尸训练。 */
+  start(): void {
+    this.ensureGpuIdleState()
+    if (this.healthInterval == null) {
+      this.healthInterval = setInterval(() => {
+        this.checkGpuHealth()
+        this.checkTaskNagging()
+      }, 60_000)
+    }
+    if (this.reconcileTimeout == null) {
+      this.reconcileTimeout = setTimeout(() => {
+        this.reconcileTimeout = null
+        this.reconcileStaleTraining()
+      }, 3 * 60_000)
+    }
+  }
+
+  stop(): void {
+    if (this.healthInterval != null) {
+      clearInterval(this.healthInterval as never)
+      this.healthInterval = null
+    }
+    if (this.reconcileTimeout != null) {
+      clearTimeout(this.reconcileTimeout as never)
+      this.reconcileTimeout = null
+    }
+    this.cancelAll()
+  }
+
+  private minutes(v: number, fallback: number): number {
+    return typeof v === 'number' && Number.isFinite(v) && v >= 1 ? v : fallback
+  }
+
+  /** nagging：逾期分钟数为间隔整数倍时重放到期处理（0 分钟由原始 timeout 负责）。 */
+  checkTaskNagging(): void {
+    const raw = this.deps.getSettings().reminder_nag_interval
+    const nagInterval = Math.floor(this.minutes(raw, 15))
+    const now = this.deps.now()
+    const rows = this.deps.db.all<TimerRow>(
+      "SELECT * FROM timers WHERE type != 'focus' AND target_timestamp IS NOT NULL",
+    )
+    for (const row of rows) {
+      const diffMs = now - Date.parse(row.target_timestamp!)
+      if (diffMs <= 0) continue
+      const overdueMinutes = Math.floor(diffMs / 60000)
+      if (overdueMinutes > 0 && overdueMinutes % nagInterval === 0) {
+        this.handleTimerExpiration(row.task_id)
+      }
+    }
+  }
+
+  private isQuietNow(): boolean {
+    const { start, end } = this.deps.getSettings().gpu_quiet_hours
+    const hour = new Date(this.deps.now()).getHours()
+    return start <= end ? hour >= start && hour < end : hour >= start || hour < end
+  }
+
+  /** GPU 健康检查：训练停滞告警 + GPU 空闲告警；静默时段整体跳过。 */
+  checkGpuHealth(): void {
+    if (this.isQuietNow()) return
+    const { db, tasks, gpus, getSettings, broadcast, now } = this.deps
+    const s = getSettings()
+    const t = now()
+    const stallMs = this.minutes(s.webhook_stalled_threshold, 5) * 60_000
+    const remindMs = Math.max(60_000, this.minutes(s.webhook_stalled_interval, 10) * 60_000)
+    const idleMs = this.minutes(s.gpu_idle_interval, 15) * 60_000
+
+    // 停滞检测
+    for (const [taskId, rec] of [...this.trainingStatus]) {
+      const task = tasks.getTask(taskId)
+      if (!task || task.status === 'archived') {
+        this.trainingStatus.delete(taskId)
+        continue
+      }
+      const stale = t - rec.lastUpdated > stallMs
+      if (!stale) {
+        if (rec.stalled) {
+          rec.stalled = false
+          rec.lastReminded = 0
+          broadcast({ type: 'timer:training-update', status: rec })
+        }
+        continue
+      }
+      if (!rec.stalled) {
+        rec.stalled = true
+        rec.lastReminded = 0
+        broadcast({ type: 'timer:training-update', status: rec })
+      }
+      if (rec.lastReminded === 0 || t - rec.lastReminded >= remindMs) {
+        rec.lastReminded = t
+        const minutes = Math.floor((t - rec.lastUpdated) / 60_000)
+        broadcast({
+          type: 'timer:ended',
+          taskId,
+          task: {
+            ...task,
+            title: `⚠️ 训练停滞: ${rec.modelName || task.title}`,
+            context_memo: `${rec.source === 'wandb' ? 'wandb' : 'webhook'} 来源 · ${minutes} 分钟无更新`,
+          },
+        })
+      }
+    }
+
+    // GPU 空闲告警
+    const all = gpus.getAllGpus()
+    const idle = all.filter((g) => g.activeTaskId == null)
+    if (idle.length === 0) {
+      this.idleAlertAt = 0 // 无空闲卡时节流归零
+      return
+    }
+    const queued = db.all<TaskRow>("SELECT * FROM tasks WHERE type = 'training' AND status = 'queued'")
+    if (queued.length === 0) return
+    if (this.idleAlertAt !== 0 && t - this.idleAlertAt < idleMs) return
+    this.idleAlertAt = t
+    const first3 = queued.slice(0, 3).map((x) => x.title).join('、')
+    const memo =
+      (queued.length > 3 ? `${first3} 等 ${queued.length} 个` : first3) +
+      ` · 空闲 GPU：${idle.map((g) => g.name).join('、')}`
+    broadcast({
+      type: 'timer:ended',
+      taskId: -1,
+      task: {
+        id: -1,
+        title: `GPU 空闲 · ${all.length} 个 GPU 上有 ${queued.length} 个训练任务排队`,
+        context_memo: memo,
+        type: 'gpu-idle',
+      },
+    })
+  }
+
+  /** 启动修复：idle GPU 缺 last_active_at → 补 now。 */
+  ensureGpuIdleState(): void {
+    for (const g of this.deps.gpus.getAllGpus()) {
+      if (g.activeTaskId == null && g.last_active_at == null) {
+        this.deps.gpus.setGpuIdle(g.id)
+      }
+    }
+  }
+
+  /** 启动对账（3 分钟宽限后调用）：无遥测的 active 训练归档 + 释放 GPU。 */
+  reconcileStaleTraining(): void {
+    const { db, tasks, gpus, broadcast } = this.deps
+    const actives = db.all<TaskRow>("SELECT * FROM tasks WHERE type = 'training' AND status = 'active'")
+    for (const task of actives) {
+      if (this.trainingStatus.has(task.id)) continue
+      if (task.gpu_id != null) gpus.setGpuIdle(task.gpu_id)
+      tasks.updateTask(task.id, { status: 'archived', gpu_id: null })
+    }
+    broadcast({ type: 'fetch-tasks' })
+    this.checkGpuHealth()
   }
 }
