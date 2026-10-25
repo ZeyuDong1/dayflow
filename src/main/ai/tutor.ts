@@ -192,6 +192,12 @@ const NUDGE_FALLBACKS = [
   '溜达够了吗?{min} 分钟了。把这窗口最小化,回到刚才那件事,只做 2 分钟。',
   '「{app}」先放一放?你的目标还等着呢,回来的门槛只有 2 分钟。'
 ]
+// 即时打断(配置为"立刻"/不到 1 分钟):不提时长,直接给台阶
+const NUDGE_INSTANT = [
+  '注意到你刚走神了。回来只用 2 分钟——先打开那个文档就好。',
+  '「{app}」先放一放?就做 2 分钟,做完允许停。',
+  '趁分心还小,拉回来最容易:只看一眼刚才那件事。'
+]
 let nudgeIdx = 0
 
 /** 生成一句督促语:先给零羞耻的兜底句(立即显示),再用 LLM 换成个性化的话。 */
@@ -200,10 +206,16 @@ export async function buildNudge(
   appName: string,
   llmComplete?: (prompt: string) => Promise<string>
 ): Promise<{ instant: string; llm?: Promise<string | null> }> {
-  const tpl = NUDGE_FALLBACKS[nudgeIdx++ % NUDGE_FALLBACKS.length]
-  const instant = tpl.replace('{min}', String(Math.round(devMinutes))).replace('{app}', appName)
+  const instantTpl =
+    devMinutes < 1
+      ? NUDGE_INSTANT[nudgeIdx++ % NUDGE_INSTANT.length]
+      : NUDGE_FALLBACKS[nudgeIdx++ % NUDGE_FALLBACKS.length]
+  const instant = instantTpl
+    .replace('{min}', String(Math.round(devMinutes)))
+    .replace('{app}', appName)
   if (!llmComplete) return { instant }
-  const prompt = `你是学习导师${TUTOR_NAME}。用户已分心 ${Math.round(devMinutes)} 分钟,当前在「${appName}」。
+  const devLabel = devMinutes < 1 ? '刚走神(不到 1 分钟)' : `已分心 ${Math.round(devMinutes)} 分钟`
+  const prompt = `你是学习导师${TUTOR_NAME}。用户${devLabel},当前在「${appName}」。
 写一句 25 字内的督促。要求:温暖不评判;先轻接情绪(像知道他可能有点烦/累/怕开始),再给一个 2 分钟就能回来的最小动作(启动困难用"只打开/只看一眼"级别的台阶);不要说教、不要提术语。只输出这句话本身。`
   return {
     instant,

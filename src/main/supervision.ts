@@ -327,13 +327,16 @@ async function tick(): Promise<void> {
 
   const devSec = (Date.now() - episode.startTs) / 1000
 
-  // 轻提醒:桌面通知,点击 = 延迟一次(计时重置)
-  if (!episode.gentleSent && !episode.postponed && devSec >= settings.tutor.gentleSec) {
+  // 轻提醒:桌面通知,点击 = 延迟一次(计时重置)。
+  // 仅当轻提醒时间严格早于强打断时才有意义;两者相同(含都为"立刻")= 只做强打断。
+  const gentleEnabled = settings.tutor.gentleSec < settings.tutor.interruptSec
+  if (gentleEnabled && !episode.gentleSent && !episode.postponed && devSec >= settings.tutor.gentleSec) {
     episode.gentleSent = true
     try {
+      const devLabel = devSec < 60 ? `${Math.max(1, Math.round(devSec))} 秒` : `${Math.round(devSec / 60)} 分钟`
       const n = new Notification({
         title: '学习小舟',
-        body: `已经分心 ${Math.round(devSec / 60)} 分钟了。回来只用 2 分钟,点击稍后提醒。`
+        body: `已经分心 ${devLabel}了。回来只用 2 分钟,点击稍后提醒。`
       })
       n.on('click', () => {
         if (episode) {

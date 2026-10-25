@@ -73,7 +73,10 @@ export default function InterruptOverlay(): React.ReactElement {
       <div className="itx-head">
         <span className="itx-badge">学习小舟</span>
         {typeof state.devMinutes === 'number' && (
-          <span className="itx-dev">已分心 {state.devMinutes} 分钟{state.appName ? ` · ${state.appName}` : ''}</span>
+          <span className="itx-dev">
+            {state.devMinutes < 1 ? '刚刚走神' : `已分心 ${state.devMinutes} 分钟`}
+            {state.appName ? ` · ${state.appName}` : ''}
+          </span>
         )}
       </div>
 
