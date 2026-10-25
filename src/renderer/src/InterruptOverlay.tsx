@@ -70,50 +70,52 @@ export default function InterruptOverlay(): React.ReactElement {
 
   return (
     <div className="itx-wrap">
-      <div className="itx-head">
-        <span className="itx-badge">学习小舟</span>
-        {typeof state.devMinutes === 'number' && (
-          <span className="itx-dev">
-            {state.devMinutes < 1 ? '刚刚走神' : `已分心 ${state.devMinutes} 分钟`}
-            {state.appName ? ` · ${state.appName}` : ''}
-          </span>
+      <div className="itx-card">
+        <div className="itx-head">
+          <span className="itx-badge">学习小舟</span>
+          {typeof state.devMinutes === 'number' && (
+            <span className="itx-dev">
+              {state.devMinutes < 1 ? '刚刚走神' : `已分心 ${state.devMinutes} 分钟`}
+              {state.appName ? ` · ${state.appName}` : ''}
+            </span>
+          )}
+        </div>
+
+        <div className="itx-nudge">{state.nudge ?? '……'}</div>
+
+        {!state.done && (
+          <>
+            <textarea
+              className="itx-input"
+              rows={3}
+              placeholder="说说现在为什么不想学?(会记进导师的记忆,帮你下次更容易回来)"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault()
+                  submit()
+                }
+              }}
+            />
+            <div className="itx-actions">
+              <button className="btn primary small" onClick={submit} disabled={!input.trim() || sending}>
+                发送反馈
+              </button>
+              <button
+                className="btn ghost small"
+                onClick={() => void window.dayflow.supervisionBreak(state.breakMinutes ?? 10)}
+              >
+                休息一下({state.breakMinutes ?? 10} 分钟)
+              </button>
+              <button className="btn ghost small" onClick={() => void window.dayflow.supervisionStopToday()}>
+                今天到此为止
+              </button>
+            </div>
+            <div className="itx-hint">把底下的窗口最小化或关闭,这个提示也会自动消失。</div>
+          </>
         )}
       </div>
-
-      <div className="itx-nudge">{state.nudge ?? '……'}</div>
-
-      {!state.done && (
-        <>
-          <textarea
-            className="itx-input"
-            rows={3}
-            placeholder="说说现在为什么不想学?(会记进导师的记忆,帮你下次更容易回来)"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault()
-                submit()
-              }
-            }}
-          />
-          <div className="itx-actions">
-            <button className="btn primary small" onClick={submit} disabled={!input.trim() || sending}>
-              发送反馈
-            </button>
-            <button
-              className="btn ghost small"
-              onClick={() => void window.dayflow.supervisionBreak(state.breakMinutes ?? 10)}
-            >
-              休息一下({state.breakMinutes ?? 10} 分钟)
-            </button>
-            <button className="btn ghost small" onClick={() => void window.dayflow.supervisionStopToday()}>
-              今天到此为止
-            </button>
-          </div>
-          <div className="itx-hint">把底下的窗口最小化或关闭,这个提示也会自动消失。</div>
-        </>
-      )}
     </div>
   )
 }
