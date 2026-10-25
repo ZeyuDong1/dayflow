@@ -36,6 +36,8 @@ src/
     db.ts          # sql.js 全内存 + 防抖落盘（%APPDATA%\Dayflow\data\dayflow.db）
     menu.ts        # 中文应用菜单栏（文件/编辑/视图/窗口/帮助，Ctrl+E 导出）
     ipc.ts / settings.ts / tasks.ts / weekly.ts / exporter.ts / cleanup.ts / paths.ts
+    todo/          # 任务域（EpochToDo 融合）：schema/service/gpu-service/timer-manager
+                   # + 纯逻辑 priority/hierarchy/commands + 设置；测试在 tests/todo/（vitest）
   preload/index.ts # contextBridge API（window.dayflow.*，类型自动流入 renderer）
   renderer/src/
     App.tsx        # Timing 式三栏壳：侧边栏(导航+项目树) | 主区 | 常驻时间轴
@@ -66,6 +68,22 @@ tools/             # mock-provider.mjs(端到端假AI) / db-set.mjs / patch-*.py
    几何必须严格按比例 `max(dur*ppm-3, 2)`——**任何 min-height 钳制都会造成重叠**（历史上踩过两次）。
 6. **项目合并**（projects.ts mergeProjects）：活动/任务/规则/映射/子项目全部移入目标后软删源；
    目标是源的后代时先把目标提到源的父级，防成环。
+
+## 任务域（EpochToDo 融合，src/main/todo/）
+
+- **术语**："任务"专指 EpochToDo 任务树（`tasks` 表）；Dayflow 的 `task_activities` 概念改称**"类型"**、
+  `projects`（规则引擎载体）改称**"类型树"**（UI/文档统一新术语，内部表名暂不动）；任务自己的项目
+  在 `task_projects` 表，与类型树**互相独立**。
+- **模块**：`priority.ts`（bang subtree-max）/ `hierarchy.ts`（树+祖先链）/ `commands.ts`（Spotlight 文法）/
+  `service.ts`（TaskService）/ `gpu-service.ts` / `timer-manager.ts`（TimerManager：focus/wait/training、
+  到期分流、nag、GPU 健康检查）/ `settings.ts`（`todo-settings` 键）/ `schema.ts`（TODO_SCHEMA_SQL）。
+- **测试**：`npm test`（vitest，tests/todo/）。**新增任务域逻辑必须配纯逻辑测试**；集成面（TimerManager）
+  用注入的假时钟/timeout/notify/broadcast，零 Electron 依赖。设计与语义基线见
+  `docs/superpowers/specs/2026-10-25-epochtodo-*.md`（用户裁决版功能清单优先）。
+- **精确语义值**（勿改）：记账门槛 180s、归档深度上限 20、副焦点 2 个、nag 默认 15 分钟、
+  创建去重=精确标题（training 除外）、到期不删行不改状态、reminder 软路径不弹窗。
+- **现状（P1）**：数据层与计时引擎已完成并通过测试；UI/IPC/webhook 未接线（P2 起），`createTodoDomain`
+  尚无调用方。
 
 ## 已知坑（血泪史，勿重蹈）
 
@@ -111,6 +129,7 @@ node tools/mock-provider.mjs   # OpenAI 兼容 + Anthropic 协议双协议假服
 ## 改动检查单
 
 - [ ] `npm run typecheck` 通过
+- [ ] 涉及任务域（src/main/todo/）：`npm test` 全绿
 - [ ] 涉及 UI：截图自测对应页面，与既有截图对比无几何回归
 - [ ] 涉及追踪/归类：跑一次真实使用或 mock-provider 端到端
 - [ ] 有新坑/新决策 → 更新本文件与 AGENTS 记忆
