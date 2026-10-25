@@ -35,6 +35,7 @@ type Judge = 'learning' | 'non-learning' | 'neutral'
 
 interface Episode {
   hwnd: number
+  pid: number
   appName: string
   title: string
   startTs: number
@@ -52,6 +53,12 @@ let pausedDayKey: string | null = null
 let interruptWin: BrowserWindow | null = null
 let lastPayload: Record<string, unknown> | null = null
 let previewUntil = 0 // 预览期间 tick 不自动关面板
+let overlayHwnd = 0 // 面板自身句柄,自识别用(标题判断有竞态)
+let calmSince = 0 // 进入平静(学习/中立)的时刻,持续平静才收面板
+let lastShowAt = 0 // 上次面板弹出时刻,重弹最小间隔用
+const CALM_LEARN_SEC = 8 // 持续学习这么久才算真回学习
+const CALM_NEUTRAL_SEC = 30 // 持续中立这么久才重置分心状态
+const RESHOW_GAP_MS = 30_000 // 两次弹出的最小间隔(防抖/防闪)
 
 function logEvent(type: string, appName: string | null, title: string | null, detail: string | null): void {
   try {
@@ -103,6 +110,7 @@ function closeInterrupt(): void {
   }
   if (interruptWin && !interruptWin.isDestroyed()) interruptWin.close()
   interruptWin = null
+  overlayHwnd = 0
 }
 
 function showInterrupt(ep: Episode, geom: { left: number; top: number; width: number; height: number; titleBarHeight: number }): void {
@@ -168,9 +176,20 @@ function showInterrupt(ep: Episode, geom: { left: number; top: number; width: nu
     }
   })
   interruptWin = win
+  // 记录面板自身 hwnd:自识别必须用句柄——页面 <title> 在 React 挂载前
+  // 会把窗口标题顶成 'Dayflow',标题判断有竞态(曾导致面板自关闪烁)
+  try {
+    overlayHwnd = Number(win.getNativeWindowHandle().readBigUInt64LE(0))
+  } catch {
+    overlayHwnd = 0
+  }
+  lastShowAt = Date.now()
 
-  // 面板与违规窗口绑定:最小化/关闭/切走 → 自动消失
+  // 面板与违规窗口绑定:违规窗口最小化/关闭 → 自动消失;
+  // 连续两次观察到"第三方前台"才判切走(目标应用自己的弹窗/右键菜单
+  // 按 pid 归为同一方,不算切走)
   const targetHwnd = ep.hwnd
+  const targetPid = ep.pid
   let awayStrikes = 0
   overlayTimer = setInterval(() => {
     if (!interruptWin || interruptWin.isDestroyed()) return
@@ -183,9 +202,8 @@ function showInterrupt(ep: Episode, geom: { left: number; top: number; width: nu
     if (Date.now() < previewUntil) return
     const fg = getForegroundInfoSync()
     if (!fg) return
-    // 面板自己、自家主窗口拿到焦点都不算"切走";连续两次观察到第三方前台才关
     const selfOrTarget =
-      fg.hwnd === targetHwnd || fg.windowTitle === '学习监督' || /dayflow/i.test(fg.appName)
+      fg.hwnd === targetHwnd || fg.hwnd === overlayHwnd || fg.pid === targetPid
     awayStrikes = selfOrTarget ? 0 : awayStrikes + 1
     if (awayStrikes >= 2) {
       logEvent('interrupt-auto-close', ep.appName, ep.title, '已切离违规窗口')
@@ -279,14 +297,19 @@ export function supervisionStatus(): {
   }
 }
 
-/** 设置页"预览强打断":对当前前台窗口立即演示面板效果。 */
-export async function previewInterrupt(): Promise<boolean> {
+/**
+ * 设置页"预览强打断":对当前前台窗口立即演示面板效果。
+ * strict=true 时走真实模式判定(不设预览保护)——回归测试用:
+ * 验证面板不会被 tick 的平静判定误关。
+ */
+export async function previewInterrupt(strict = false): Promise<boolean> {
   const fg = getForegroundInfoSync()
   if (!fg) return false
   const geom = getWindowGeom(fg.hwnd)
   if (!geom) return false
   const ep: Episode = {
     hwnd: fg.hwnd,
+    pid: fg.pid,
     appName: fg.appName,
     title: fg.windowTitle,
     startTs: Date.now() - 185_000, // 演示按"已分心 3 分钟"呈现
@@ -295,10 +318,11 @@ export async function previewInterrupt(): Promise<boolean> {
     lastInterruptAt: Date.now()
   }
   episode = ep
+  calmSince = 0
   lastPayload = await interruptPayload(ep)
   showInterrupt(ep, geom)
-  previewUntil = Date.now() + 120_000
-  logEvent('interrupt-preview', ep.appName, ep.title, null)
+  previewUntil = strict ? 0 : Date.now() + 120_000
+  logEvent('interrupt-preview', ep.appName, ep.title, strict ? 'strict' : null)
   return true
 }
 
@@ -333,26 +357,35 @@ async function tickInner(): Promise<void> {
   const idleSec = powerMonitor.getSystemIdleTime()
   const fg = getForegroundInfoSync()
   if (!fg) return
-  // 打断面板自己在前台时不改状态:否则"面板抢焦点→判中立→关自己→
-  // 焦点回违规应用→再弹"的死循环(闪烁)。面板生命周期由绑定监控负责。
-  if (fg.windowTitle === '学习监督') return
+  // 面板自身在前台绝不改状态(句柄精确识别;标题判断曾因页面 <title>
+  // 竞态把面板误判成"已回学习",造成自关→重弹闪烁)
+  if (overlayHwnd && fg.hwnd === overlayHwnd) return
 
   const idle = idleSec > settings.capture.idleThresholdSec
   const verdict: Judge = idle ? 'neutral' : judge(fg)
 
   if (verdict !== 'non-learning') {
-    if (episode && interruptWin && !interruptWin.isDestroyed() && Date.now() > previewUntil) {
-      // 已经回到学习/离开 → 面板自动消失
-      closeInterrupt()
-      logEvent('back-to-study', episode.appName, episode.title, verdict)
+    // 平静确认:视频/浏览器标题变化会让分类瞬时翻转,抖动不关面板,
+    // 持续平静(学习 8s / 中立 30s)才收——这是防闪的核心。
+    if (!calmSince) calmSince = Date.now()
+    const calmSec = (Date.now() - calmSince) / 1000
+    const learnDone = verdict === 'learning' && calmSec >= CALM_LEARN_SEC
+    const neutralDone = calmSec >= CALM_NEUTRAL_SEC
+    if (learnDone || neutralDone) {
+      if (episode && interruptWin && !interruptWin.isDestroyed() && Date.now() > previewUntil) {
+        closeInterrupt()
+        logEvent('back-to-study', episode.appName, episode.title, `${verdict} ${Math.round(calmSec)}s`)
+      }
+      episode = null
     }
-    episode = null
     return
   }
+  calmSince = 0
 
   if (!episode || episode.hwnd !== fg.hwnd) {
     episode = {
       hwnd: fg.hwnd,
+      pid: fg.pid,
       appName: fg.appName,
       title: fg.windowTitle,
       startTs: Date.now(),
@@ -391,10 +424,16 @@ async function tickInner(): Promise<void> {
     }
   }
 
-  // 强打断 / 重复
+  // 强打断 / 重复:面板已开时只移位/刷新内容(同一次打断的延续,立即跟随
+  // 新违规窗口);面板已关时才重新弹出,且受重复间隔 + 两次弹出最小间隔
+  // 双重门控(防抖防闪)。
+  const panelOpen = !!interruptWin && !interruptWin.isDestroyed()
+  const repeatDue =
+    Date.now() - episode.lastInterruptAt >= Math.max(60, settings.tutor.repeatSec) * 1000
+  const gapDue = Date.now() - lastShowAt >= RESHOW_GAP_MS
   const due =
     devSec >= settings.tutor.interruptSec &&
-    Date.now() - episode.lastInterruptAt >= Math.max(60, settings.tutor.repeatSec) * 1000
+    (panelOpen ? episode.lastInterruptAt === 0 || repeatDue : repeatDue && gapDue)
   if (due) {
     const geom = getWindowGeom(fg.hwnd)
     if (geom) {

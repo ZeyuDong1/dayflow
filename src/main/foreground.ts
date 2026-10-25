@@ -5,6 +5,7 @@ export interface ForegroundInfo {
   windowTitle: string
   exePath?: string // full path, used for app-icon extraction
   hwnd: number // native window handle, for geometry/liveness checks
+  pid: number // owning process id, to group an app's popups/menus with its window
 }
 
 export interface WindowGeom {
@@ -88,7 +89,7 @@ export function getForegroundInfoSync(): ForegroundInfo | null {
       }
       CloseHandle(hProc)
     }
-    return { appName, windowTitle, exePath, hwnd }
+    return { appName, windowTitle, exePath, hwnd, pid: pidBuf[0] }
   } catch {
     return null
   }
