@@ -302,6 +302,9 @@ const api = {
     focusToday: (): Promise<number> => ipcRenderer.invoke('todo:focus-today'),
     getGpus: (): Promise<(import('../shared/todo-types').GpuRow & { activeTaskId: number | null })[]> =>
       ipcRenderer.invoke('todo:get-gpus'),
+    createGpu: (name: string): Promise<import('../shared/todo-types').GpuRow> =>
+      ipcRenderer.invoke('todo:create-gpu', name),
+    deleteGpu: (id: number): Promise<void> => ipcRenderer.invoke('todo:delete-gpu', id),
     getSettings: (): Promise<unknown> => ipcRenderer.invoke('todo:get-settings'),
     updateSettings: (patch: Record<string, unknown>): Promise<unknown> =>
       ipcRenderer.invoke('todo:update-settings', patch),
