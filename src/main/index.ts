@@ -23,6 +23,13 @@ import { classifyBacklogApps } from './ai/llm-classify'
 // Ensure userData points at .../Dayflow even in dev.
 app.setName('Dayflow')
 
+// DAYFLOW_USER_DATA: parallel dev instances get their own data root (db,
+// recordings, app-icons.json) and skip the single-instance lock so two can
+// run side by side. Settings live in the db, so the data root is the only
+// shared-state chokepoint besides the mock-provider port.
+const devDataRoot = process.env.DAYFLOW_USER_DATA
+if (devDataRoot) app.setPath('userData', devDataRoot)
+
 let mainWindow: BrowserWindow | null = null
 let isQuitting = false
 
@@ -91,7 +98,7 @@ function showMainWindow(): void {
   }
 }
 
-const gotLock = app.requestSingleInstanceLock()
+const gotLock = devDataRoot ? true : app.requestSingleInstanceLock()
 if (!gotLock) {
   app.quit()
 } else {
