@@ -8,7 +8,8 @@ import {
   getForegroundInfoSync,
   getWindowGeom,
   isWindowUsable,
-  type ForegroundInfo
+  type ForegroundInfo,
+  type WindowGeom
 } from './foreground'
 import {
   buildNudgeFallback,
@@ -113,21 +114,121 @@ function closeInterrupt(): void {
   overlayHwnd = 0
 }
 
-function showInterrupt(ep: Episode, geom: { left: number; top: number; width: number; height: number; titleBarHeight: number }): void {
-  // 让出顶部标题栏:用户随时能点到底下 APP 的最小化/关闭。
-  // 几何来自 user32(物理像素),Electron setBounds 用逻辑像素(DIP)——
-  // 多屏不同缩放时必须换算,否则高缩放屏上位置/尺寸全部偏 scale 倍。
-  const dip = screen.screenToDipRect(null, {
-    x: geom.left,
-    y: geom.top + geom.titleBarHeight,
-    width: geom.width,
-    height: Math.max(0, geom.height - geom.titleBarHeight)
-  })
+// ---------------------------------------------------------------------------
+// 显示器物理↔DIP 映射:探针标定(不依赖有歧义的换算 API)
+// ---------------------------------------------------------------------------
+
+interface DisplayCal {
+  dip: { x: number; y: number; width: number; height: number } // DIP 矩形
+  physOrigin: { x: number; y: number } // 该 DIP 原点实测的物理原点
+  scale: number
+}
+
+let calCache: DisplayCal[] | null = null
+let calListenersBound = false
+
+function bindCalInvalidation(): void {
+  if (calListenersBound) return
+  calListenersBound = true
+  const invalidate = (): void => {
+    calCache = null
+  }
+  screen.on('display-metrics-changed', invalidate)
+  screen.on('display-added', invalidate)
+  screen.on('display-removed', invalidate)
+}
+
+/**
+ * 用隐形探针窗口标定每台显示器的 DIP→物理 映射:
+ * 在 DIP 原点放一个 8x8 无边框窗口,GetWindowRect 读回物理位置——
+ * 直接对 Electron 的窗口摆放做闭环测量,任何换算 API 的语义歧义都被绕开。
+ */
+function calibrateDisplays(): DisplayCal[] {
+  bindCalInvalidation()
+  if (calCache) return calCache
+  const cals: DisplayCal[] = []
+  for (const d of screen.getAllDisplays()) {
+    let physOrigin = {
+      x: Math.round(d.bounds.x * d.scaleFactor),
+      y: Math.round(d.bounds.y * d.scaleFactor)
+    }
+    try {
+      const probe = new BrowserWindow({
+        x: d.bounds.x,
+        y: d.bounds.y,
+        width: 8,
+        height: 8,
+        frame: false,
+        show: false,
+        skipTaskbar: true,
+        focusable: false
+      })
+      const g = getWindowGeom(Number(probe.getNativeWindowHandle().readBigUInt64LE(0)))
+      // 探针的客户区原点 = setBounds DIP 原点的真实物理映射
+      // (外框含隐形边框,实测偏 8px×缩放,必须用客户区)
+      if (g) physOrigin = { x: g.clientX, y: g.clientY }
+      probe.destroy()
+    } catch {
+      // 标定失败退回估算值
+    }
+    cals.push({ dip: d.bounds, physOrigin, scale: d.scaleFactor })
+  }
+  calCache = cals
+  return cals
+}
+
+/**
+ * 物理像素 → 逻辑像素,逐显示器精确换算:
+ *   dip = 显示器DIP原点 + (物理 − 该显示器实测物理原点) / 缩放
+ * screenToDipRect(null, …) 按主屏 DPI 统一缩放、nativeOrigin 并非物理
+ * 原点——两者在副屏不同缩放时都会偏(一台准一台不准的根因)。
+ */
+function physToDip(phys: {
+  x: number
+  y: number
+  width: number
+  height: number
+}): { x: number; y: number; width: number; height: number } {
+  const cals = calibrateDisplays()
+  const cx = phys.x + phys.width / 2
+  const cy = phys.y + phys.height / 2
+  const cal =
+    cals.find(
+      (c) =>
+        cx >= c.physOrigin.x &&
+        cx < c.physOrigin.x + Math.round(c.dip.width * c.scale) &&
+        cy >= c.physOrigin.y &&
+        cy < c.physOrigin.y + Math.round(c.dip.height * c.scale)
+    ) ?? cals[0]
+  return {
+    x: cal.dip.x + (phys.x - cal.physOrigin.x) / cal.scale,
+    y: cal.dip.y + (phys.y - cal.physOrigin.y) / cal.scale,
+    width: phys.width / cal.scale,
+    height: phys.height / cal.scale
+  }
+}
+
+function showInterrupt(ep: Episode, geom: WindowGeom): void {
+  // 覆盖目标 = 违规窗口的客户区(=标题栏以下的内容区,天然让出标题栏)。
+  // 几何来自 user32(物理像素),Electron setBounds 用逻辑像素(DIP)。
+  const contentPhys = {
+    x: geom.clientX,
+    y: geom.clientY,
+    width: geom.clientWidth,
+    height: geom.clientHeight
+  }
+  const dip = physToDip(contentPhys)
+  const naive = screen.screenToDipRect(null, contentPhys) // 对照:主屏统一缩放(副屏会偏)
   const x = dip.x
   const y = dip.y
   const w = Math.max(360, dip.width)
   const h = Math.max(260, dip.height)
-  console.log(`[supervision] interrupt bounds phys=${geom.left},${geom.top}+${geom.titleBarHeight} → dip=${x},${y} ${w}x${h}`)
+  const topo = calibrateDisplays()
+    .map((c) => `${c.scale}@phys${c.physOrigin.x},${c.physOrigin.y}→dip(${c.dip.x},${c.dip.y})`)
+    .join(' | ')
+  console.log(
+    `[supervision] bounds client=${geom.clientX},${geom.clientY} ${geom.clientWidth}x${geom.clientHeight} → per-monitor=${x},${y} ${w}x${h} naive=${naive.x},${naive.y} ${naive.width}x${naive.height} displays=[${topo}]`
+  )
 
   if (interruptWin && !interruptWin.isDestroyed()) {
     interruptWin.setBounds({ x, y, width: w, height: h })

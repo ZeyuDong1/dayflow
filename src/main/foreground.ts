@@ -14,6 +14,10 @@ export interface WindowGeom {
   width: number
   height: number
   titleBarHeight: number // 非客户端顶部(标题栏)高度,用于打断面板"让出标题栏"
+  clientX: number // 客户区(内容区)物理矩形 —— 覆盖目标的精确语义
+  clientY: number
+  clientWidth: number
+  clientHeight: number
 }
 
 /**
@@ -36,7 +40,8 @@ const ClientToScreen = u32.func('bool ClientToScreen(intptr_t hwnd, int32_t *poi
 const IsIconic = u32.func('bool IsIconic(intptr_t hwnd)')
 const IsWindow = u32.func('bool IsWindow(intptr_t hwnd)')
 
-/** 窗口几何:外框矩形 + 标题栏高度(客户区顶到窗口顶的距离,随 DPI/应用自适应)。 */
+/** 窗口几何:外框矩形 + 客户区矩形(=标题栏以下的内容区)+ 标题栏高度。
+ * 客户区是覆盖目标的精确语义;外框含隐形边框(DPI 相关),不能直接换算摆放。 */
 export function getWindowGeom(hwnd: number): WindowGeom | null {
   try {
     const rect = new Int32Array(4)
@@ -46,13 +51,21 @@ export function getWindowGeom(hwnd: number): WindowGeom | null {
     const width = rect[2] - left
     const height = rect[3] - top
     let titleBarHeight = 36
+    let clientX = left
+    let clientY = top
+    let clientWidth = width
+    let clientHeight = height
     const cr = new Int32Array(4)
     const pt = new Int32Array(2)
     if (GetClientRect(hwnd, cr) && ClientToScreen(hwnd, pt)) {
       const h = pt[1] - top
       if (h > 0 && h <= 96) titleBarHeight = h
+      clientX = pt[0]
+      clientY = pt[1]
+      clientWidth = cr[2]
+      clientHeight = cr[3]
     }
-    return { left, top, width, height, titleBarHeight }
+    return { left, top, width, height, titleBarHeight, clientX, clientY, clientWidth, clientHeight }
   } catch {
     return null
   }
