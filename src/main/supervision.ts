@@ -1,4 +1,4 @@
-import { BrowserWindow, Notification, app, powerMonitor } from 'electron'
+import { BrowserWindow, Notification, app, powerMonitor, screen } from 'electron'
 import path from 'path'
 import { getSettings } from './settings'
 import { todayKey } from './paths'
@@ -23,7 +23,7 @@ import { textComplete, resolveProvider } from './ai/providers'
  * - 违规窗口被最小化或关闭、或切回学习,面板自动消失
  */
 
-const TICK_MS = 3000
+const TICK_MS = 1000 // "立刻"档要求秒级响应;纯本地 FFI 轮询,零 token
 const OVERLAY_POLL_MS = 800
 
 type Judge = 'learning' | 'non-learning' | 'neutral'
@@ -39,6 +39,7 @@ interface Episode {
 }
 
 let tickTimer: NodeJS.Timeout | null = null
+let ticking = false
 let overlayTimer: NodeJS.Timeout | null = null
 let episode: Episode | null = null
 let breakUntil = 0
@@ -100,11 +101,20 @@ function closeInterrupt(): void {
 }
 
 function showInterrupt(ep: Episode, geom: { left: number; top: number; width: number; height: number; titleBarHeight: number }): void {
-  // 让出顶部标题栏:用户随时能点到底下 APP 的最小化/关闭
-  const x = geom.left
-  const y = geom.top + geom.titleBarHeight
-  const w = Math.max(360, geom.width)
-  const h = Math.max(260, geom.height - geom.titleBarHeight)
+  // 让出顶部标题栏:用户随时能点到底下 APP 的最小化/关闭。
+  // 几何来自 user32(物理像素),Electron setBounds 用逻辑像素(DIP)——
+  // 多屏不同缩放时必须换算,否则高缩放屏上位置/尺寸全部偏 scale 倍。
+  const dip = screen.screenToDipRect(null, {
+    x: geom.left,
+    y: geom.top + geom.titleBarHeight,
+    width: geom.width,
+    height: Math.max(0, geom.height - geom.titleBarHeight)
+  })
+  const x = dip.x
+  const y = dip.y
+  const w = Math.max(360, dip.width)
+  const h = Math.max(260, dip.height)
+  console.log(`[supervision] interrupt bounds phys=${geom.left},${geom.top}+${geom.titleBarHeight} → dip=${x},${y} ${w}x${h}`)
 
   if (interruptWin && !interruptWin.isDestroyed()) {
     interruptWin.setBounds({ x, y, width: w, height: h })
@@ -290,6 +300,16 @@ function isPaused(): boolean {
 }
 
 async function tick(): Promise<void> {
+  if (ticking) return // 串行化:防重叠 tick 抢跑打断逻辑
+  ticking = true
+  try {
+    await tickInner()
+  } finally {
+    ticking = false
+  }
+}
+
+async function tickInner(): Promise<void> {
   const settings = getSettings()
   if (!settings.tutor.enabled) return
   if (Date.now() < breakUntil) return
@@ -298,6 +318,9 @@ async function tick(): Promise<void> {
   const idleSec = powerMonitor.getSystemIdleTime()
   const fg = getForegroundInfoSync()
   if (!fg) return
+  // 打断面板自己在前台时不改状态:否则"面板抢焦点→判中立→关自己→
+  // 焦点回违规应用→再弹"的死循环(闪烁)。面板生命周期由绑定监控负责。
+  if (fg.windowTitle === '学习监督') return
 
   const idle = idleSec > settings.capture.idleThresholdSec
   const verdict: Judge = idle ? 'neutral' : judge(fg)
@@ -356,7 +379,7 @@ async function tick(): Promise<void> {
   // 强打断 / 重复
   const due =
     devSec >= settings.tutor.interruptSec &&
-    Date.now() - episode.lastInterruptAt >= settings.tutor.repeatSec * 1000
+    Date.now() - episode.lastInterruptAt >= Math.max(60, settings.tutor.repeatSec) * 1000
   if (due) {
     const geom = getWindowGeom(fg.hwnd)
     if (geom) {
