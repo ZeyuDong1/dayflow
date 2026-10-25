@@ -32,6 +32,17 @@ export interface SyntheticTask {
   type: string
 }
 
+/** webhook 训练状态更新 payload（/hook 训练分支） */
+export interface TrainingUpdateInput {
+  task_id?: number | string
+  title?: string
+  gpu_name?: string
+  host_id?: string
+  model_name?: string
+  eta?: string
+  metrics?: Record<string, unknown>
+}
+
 export type TimerEvent =
   | { type: 'timer:update' }
   | { type: 'timer:ended'; taskId: number; task: TaskRow | SyntheticTask | null }
@@ -307,6 +318,126 @@ export class TimerManager {
 
   removeTrainingStatus(taskId: number): void {
     this.trainingStatus.delete(taskId)
+  }
+
+  /**
+   * webhook 训练状态更新（语义规格 §2.10）。
+   * wandb 压倒性：任一 wandb 条目在跑 → 整通道短路；解析出的任务已有 wandb 条目 → 跳过。
+   * 解析优先级：task_id → GPU 上 active webhook 任务 → GPU 上任意 active → 精确标题 → 模糊；
+   * 全失败自动建任务（title||model_name||"Training on {gpu}"）；三者皆无返回 false。
+   */
+  updateTrainingStatus(data: TrainingUpdateInput): boolean {
+    const { db, tasks, gpus, broadcast, now } = this.deps
+    // wandb 通道级压制
+    for (const rec of this.trainingStatus.values()) {
+      if (rec.source === 'wandb') return true
+    }
+    const t = now()
+    const gpuName = typeof data.gpu_name === 'string' && data.gpu_name ? data.gpu_name : undefined
+
+    // 任务解析
+    let task: TaskRow | undefined
+    if (data.task_id != null) task = tasks.getTask(Number(data.task_id))
+    if (!task && gpuName) {
+      const gpu = gpus.findGpu(gpuName, data.host_id ?? null) ?? gpus.findGpu(gpuName)
+      if (gpu) {
+        task =
+          db.get<TaskRow>(
+            "SELECT * FROM tasks WHERE gpu_id = ? AND status = 'active' AND is_webhook = 1 LIMIT 1",
+            [gpu.id],
+          ) ??
+          db.get<TaskRow>("SELECT * FROM tasks WHERE gpu_id = ? AND status = 'active' LIMIT 1", [gpu.id])
+      }
+    }
+    const searchKey = data.title || data.model_name
+    if (!task && searchKey) {
+      task = db.get<TaskRow>(
+        "SELECT * FROM tasks WHERE title = ? AND status = 'active' AND is_webhook = 1 LIMIT 1",
+        [searchKey],
+      )
+    }
+    if (!task && searchKey) {
+      const fuzzy = db.all<TaskRow>(
+        "SELECT * FROM tasks WHERE status != 'archived' AND title LIKE ? ORDER BY is_webhook DESC",
+        [`%${searchKey}%`],
+      )
+      task = fuzzy.find((c) => {
+        if (!gpuName) return true
+        if (c.gpu_id != null) {
+          const g = gpus.getGpu(c.gpu_id)
+          return g?.name === gpuName
+        }
+        return c.is_webhook === 1 // 带 gpu_name：无 gpu_id 的候选仅接受 webhook 任务
+      })
+    }
+
+    // 全失败 → 自动建
+    if (!task) {
+      const title = data.title || data.model_name || (gpuName ? `Training on ${gpuName}` : undefined)
+      if (!title) return false
+      task = tasks.createTask(title, {
+        type: 'training',
+        status: 'active',
+        is_webhook: 1,
+        gpu_id: null,
+      })
+      db.run('UPDATE tasks SET last_focused_at = ? WHERE id = ?', [new Date(t).toISOString(), task.id])
+    }
+
+    // 解析出的任务已有 wandb 条目 → 跳过
+    const existing = this.trainingStatus.get(task.id)
+    if (existing?.source === 'wandb') return true
+
+    // 完成分支
+    const metrics = (data.metrics ?? {}) as Record<string, unknown>
+    if (metrics.status === 'completed') {
+      if (task.gpu_id != null) gpus.setGpuIdle(task.gpu_id)
+      this.trainingStatus.delete(task.id)
+      tasks.updateTask(task.id, { status: 'archived' })
+      tasks.createTask(`📋 Check results: ${task.title}`, { projectId: task.project_id })
+      broadcast({ type: 'fetch-tasks' })
+      return true
+    }
+
+    // GPU 处理
+    if (gpuName) {
+      let gpu = gpus.findGpu(gpuName, data.host_id ?? null)
+      if (!gpu) {
+        const byName = gpus.findGpu(gpuName)
+        if (byName) {
+          if (data.host_id && !byName.host_id) {
+            db.run('UPDATE gpus SET host_id = ? WHERE id = ?', [data.host_id, byName.id]) // 回填
+          }
+          gpu = byName
+        } else {
+          gpu = gpus.createGpu(gpuName, { hostId: data.host_id ?? null, color: '#4ade80' })
+        }
+      }
+      // 先清该 GPU 上其他非 webhook 任务的绑定
+      db.run(
+        `UPDATE tasks SET gpu_id = NULL, status = 'queued' WHERE gpu_id = ? AND is_webhook = 0 AND id != ?`,
+        [gpu.id, task.id],
+      )
+      if (task.gpu_id !== gpu.id || task.status !== 'active') {
+        tasks.updateTask(task.id, { gpu_id: gpu.id, status: 'active' })
+      }
+      db.run('UPDATE gpus SET last_active_at = ? WHERE id = ?', [new Date(t).toISOString(), gpu.id])
+    }
+
+    const rec: TrainingStatusRecord = {
+      taskId: task.id,
+      gpuName: gpuName ?? '',
+      modelName: data.model_name,
+      eta: data.eta,
+      metrics: metrics as Record<string, unknown>,
+      lastUpdated: t,
+      stalled: false,
+      lastReminded: 0,
+      source: 'webhook',
+    }
+    this.trainingStatus.set(task.id, rec)
+    broadcast({ type: 'timer:training-update', status: rec })
+    return true
   }
 
   // ---------- 常驻检查（60s 循环 + 启动对账） ----------
