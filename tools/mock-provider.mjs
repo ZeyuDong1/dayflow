@@ -1,5 +1,5 @@
 // Mock OpenAI-compatible vision provider for end-to-end pipeline testing.
-// Listens on 127.0.0.1:8765. Logs requests to mock-provider-requests.log.
+// Listens on 127.0.0.1:$MOCK_PORT (default 8765). Logs requests to mock-provider-requests.log.
 import http from 'node:http'
 import fs from 'node:fs'
 
@@ -141,7 +141,8 @@ const server = http.createServer((req, res) => {
   })
 })
 
-server.listen(8765, '127.0.0.1', () => {
-  fs.writeFileSync(LOG, `mock provider started\n`)
-  console.log('mock provider listening on http://127.0.0.1:8765/v1')
+const PORT = Number(process.env.MOCK_PORT || 8765)
+server.listen(PORT, '127.0.0.1', () => {
+  fs.writeFileSync(LOG, `mock provider started on :${PORT}\n`)
+  console.log(`mock provider listening on http://127.0.0.1:${PORT}/v1`)
 })
