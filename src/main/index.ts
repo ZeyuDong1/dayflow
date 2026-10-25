@@ -14,6 +14,7 @@ import {
 import { startPipeline, stopPipeline, onCardsChanged } from './ai/analyze'
 import { startMemoryServer, stopMemoryServer } from './memory/sidecar'
 import { bootstrapMemory } from './memory/client'
+import { supervisionSync, stopSupervision } from './supervision'
 import { startReflectionLoop, stopReflectionLoop } from './ai/reflect-tick'
 import { startCleanupSchedule, stopCleanupSchedule } from './cleanup'
 import { registerIpc } from './ipc'
@@ -137,12 +138,13 @@ if (!gotLock) {
     applyLoginItem()
     updateTray(showMainWindow)
 
-    // 记忆侧车(ai-memory) + 导师反思循环。
+    // 记忆侧车(ai-memory) + 导师反思循环 + 学习监督。
     void startMemoryServer().then(async (ok) => {
       if (!ok) return
       await bootstrapMemory(getSettings().tutor.goal)
       startReflectionLoop()
     })
+    supervisionSync()
 
     // Classify never-seen apps (including a backlog from before setup).
     classifyBacklogApps()
@@ -185,7 +187,19 @@ if (!gotLock) {
             console.log('[shot-title]', mainWindow?.getTitle())
             return undefined
           })
-          .then(() => (mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents.capturePage() : null))
+          .then(() => {
+            const wins = BrowserWindow.getAllWindows().map(
+              (w) => `${w.isDestroyed() ? 'DESTROYED' : w.webContents.getURL()} | ${w.getTitle()}`
+            )
+            console.log('[shot-wins]', JSON.stringify(wins))
+            const target =
+              process.env.DAYFLOW_SHOT_WIN === 'interrupt'
+                ? (BrowserWindow.getAllWindows().find(
+                    (w) => !w.isDestroyed() && w.webContents.getURL().includes('#/interrupt')
+                  ) ?? mainWindow)
+                : mainWindow
+            return target && !target.isDestroyed() ? target.webContents.capturePage() : null
+          })
           .then((img) => {
             if (img) fs.writeFileSync(shotPath, img.toPNG())
             console.log(`[screenshot] saved ${shotPath}`)
@@ -203,6 +217,7 @@ app.on('before-quit', () => {
   stopPipeline()
   stopReflectionLoop()
   stopMemoryServer()
+  stopSupervision()
   stopCleanupSchedule()
   db.flush()
 })

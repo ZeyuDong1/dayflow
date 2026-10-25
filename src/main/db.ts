@@ -187,7 +187,7 @@ class DB {
 
       -- 学习守护（常驻 Agent）：打断/提醒事件史 + 今日累计 -----
 
-      CREATE TABLE IF NOT EXISTS guardian_events (
+      CREATE TABLE IF NOT EXISTS tutor_events (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           ts INTEGER NOT NULL,
           type TEXT NOT NULL,
@@ -195,9 +195,9 @@ class DB {
           title TEXT,
           detail TEXT
       );
-      CREATE INDEX IF NOT EXISTS idx_guardian_events_ts ON guardian_events(ts);
+      CREATE INDEX IF NOT EXISTS idx_tutor_events_ts ON tutor_events(ts);
 
-      CREATE TABLE IF NOT EXISTS guardian_daily (
+      CREATE TABLE IF NOT EXISTS tutor_daily (
           day TEXT NOT NULL,
           focus_ms INTEGER NOT NULL DEFAULT 0,
           dev_ms INTEGER NOT NULL DEFAULT 0,

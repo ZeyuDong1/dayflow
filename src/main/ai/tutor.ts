@@ -1,4 +1,4 @@
-import { gatherMemory, memoryWritePage, memoryQuery, MEM_GOAL, MEM_PROFILE, MEM_REFLECTIONS, type MemoryBlocks } from '../memory/client'
+import { gatherMemory, memoryWritePage, memoryReadPage, memoryQuery, MEM_GOAL, MEM_PROFILE, MEM_REFLECTIONS, type MemoryBlocks } from '../memory/client'
 
 /**
  * 学习导师 Agent —— 有"思维"的常驻学习伙伴。
@@ -164,3 +164,49 @@ export async function buildGreeting(
 }
 
 export { MEM_GOAL, MEM_PROFILE, MEM_REFLECTIONS, memoryQuery }
+
+// ---------------------------------------------------------------------------
+// 监督打断:督促语 + 心理反馈回收
+// ---------------------------------------------------------------------------
+
+const NUDGE_FALLBACKS = [
+  '已经分心 {min} 分钟了。回来只用 2 分钟——先打开那个文档就好。',
+  '注意到你停在「{app}」{min} 分钟了。不评判,就问一句:现在回来做哪一小步?',
+  '溜达够了吗?{min} 分钟了。把这窗口最小化,回到刚才那件事,只做 2 分钟。',
+  '「{app}」先放一放?你的目标还等着呢,回来的门槛只有 2 分钟。'
+]
+let nudgeIdx = 0
+
+/** 生成一句督促语:先给零羞耻的兜底句(立即显示),再用 LLM 换成个性化的话。 */
+export async function buildNudge(
+  devMinutes: number,
+  appName: string,
+  llmComplete?: (prompt: string) => Promise<string>
+): Promise<{ instant: string; llm?: Promise<string | null> }> {
+  const tpl = NUDGE_FALLBACKS[nudgeIdx++ % NUDGE_FALLBACKS.length]
+  const instant = tpl.replace('{min}', String(Math.round(devMinutes))).replace('{app}', appName)
+  if (!llmComplete) return { instant }
+  const prompt = `你是学习导师${TUTOR_NAME}。用户已分心 ${Math.round(devMinutes)} 分钟,当前在「${appName}」。写一句 25 字内的督促:温暖不评判、给一个 2 分钟就能回来的小台阶。只输出这句话本身。`
+  return {
+    instant,
+    llm: llmComplete(prompt)
+      .then((s) => {
+        const t = s.trim()
+        return t && t.length <= 60 ? t : null
+      })
+      .catch(() => null)
+  }
+}
+
+/** 把用户在打断面板里写的心理反馈沉淀进用户画像(导师会记住)。 */
+export async function saveFeedbackToMemory(feedback: string): Promise<void> {
+  const text = feedback.trim().slice(0, 300)
+  if (!text) return
+  const stamp = new Date().toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+  const existing = (await memoryReadPage(MEM_PROFILE)) ?? '# 用户画像\n'
+  const lines = existing.trim().split('\n')
+  lines.push(`- [${stamp}] 分心反馈: ${text}`)
+  const head = lines.filter((l) => !l.startsWith('- ')).join('\n')
+  const entries = lines.filter((l) => l.startsWith('- '))
+  await memoryWritePage(MEM_PROFILE, [head, ...entries.slice(-80)].join('\n'), '用户画像')
+}

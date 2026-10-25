@@ -35,6 +35,7 @@ import { listModels, testConnection } from './ai/providers'
 import { memoryServerInfo, startMemoryServer } from './memory/sidecar'
 import { memoryQuery, memoryWritePage, MEM_GOAL } from './memory/client'
 import { reflectNow, restartReflectionLoop } from './ai/reflect-tick'
+import * as supervision from './supervision'
 import * as chat from './ai/chat'
 import { exportMarkdown } from './exporter'
 import { getStorageUsage, runCleanup, deleteAllData } from './cleanup'
@@ -53,7 +54,10 @@ export function registerIpc(win: BrowserWindow): void {
     const next = saveSettings(patch)
     if (patch.capture) restartCapture()
     if (patch.ai) classifyBacklogApps()
-    if (patch.tutor) restartReflectionLoop()
+    if (patch.tutor) {
+      restartReflectionLoop()
+      supervision.supervisionSync()
+    }
     // 学习目标写穿到长期记忆,保持设置与记忆一致
     if (patch.tutor && patch.tutor.goal !== undefined) {
       void memoryWritePage(MEM_GOAL, `# 学习目标\n${patch.tutor.goal.trim() || '（未设定）'}`, '学习目标').catch(() => {})
@@ -197,6 +201,20 @@ export function registerIpc(win: BrowserWindow): void {
   ipcMain.handle('tutor:startMemory', () => startMemoryServer())
   ipcMain.handle('tutor:reflectNow', () => reflectNow())
   ipcMain.handle('tutor:searchMemory', (_e, query: string) => memoryQuery(query, 8))
+
+  // -- 学习监督（升级阶梯打断 + 强打断面板） -------------------------------------
+  ipcMain.handle('supervision:status', () => supervision.supervisionStatus())
+  ipcMain.handle('supervision:feedback', (_e, text: string) => supervision.submitFeedback(text))
+  ipcMain.handle('supervision:break', (_e, minutes?: number) => {
+    supervision.takeBreak(minutes)
+    return true
+  })
+  ipcMain.handle('supervision:stopToday', () => {
+    supervision.stopToday()
+    return true
+  })
+  ipcMain.handle('supervision:preview', () => supervision.previewInterrupt())
+  ipcMain.handle('supervision:interruptState', () => supervision.getInterruptState())
 
   // -- Export ------------------------------------------------------------------
   ipcMain.handle('export:markdown', async (_e, start: string, end: string) => exportMarkdown(start, end))

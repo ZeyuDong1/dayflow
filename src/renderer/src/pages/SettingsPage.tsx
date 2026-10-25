@@ -725,6 +725,17 @@ export default function SettingsPage({ onSaved }: { onSaved: () => void }): Reac
               onClick={() => patch({ tutor: { soundEnabled: !settings.tutor.soundEnabled } })}
             />
           </div>
+          <div className="settings-row">
+            <div>
+              <div className="settings-row-label">预览强打断</div>
+              <div className="settings-row-help">
+                对当前窗口演示打断面板：恰好盖住内容区、让出标题栏；把底下窗口最小化或切走，面板自动消失。
+              </div>
+            </div>
+            <button className="btn small" onClick={() => void window.dayflow.supervisionPreview()}>
+              预览
+            </button>
+          </div>
 
           <div className="settings-group-title">学习项目白名单</div>
           <div className="settings-row" style={{ alignItems: 'flex-start' }}>
