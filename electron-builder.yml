@@ -1,0 +1,26 @@
+appId: com.dayflow.win
+productName: Dayflow
+npmRebuild: false
+directories:
+  output: release-build
+  buildResources: build
+files:
+  - out/**
+  - package.json
+asarUnpack:
+  - node_modules/active-win
+  - node_modules/koffi
+  - node_modules/sql.js
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: build/icon.ico
+  artifactName: Dayflow-Setup-${version}.${ext}
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  shortcutName: Dayflow
+publish: null
