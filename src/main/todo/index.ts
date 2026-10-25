@@ -6,6 +6,7 @@ import type { TodoDB } from './db'
 import { TaskService } from './service'
 import { GpuService } from './gpu-service'
 import { TimerManager, type TimerDeps } from './timer-manager'
+import { AiReminderService } from './ai-reminder'
 import { getTodoSettings, type TodoSettings } from './settings'
 
 export * from './db'
@@ -14,6 +15,8 @@ export * from './settings'
 export * from './service'
 export * from './gpu-service'
 export * from './timer-manager'
+export * from './ai-reminder'
+export * from './server'
 export * from './priority'
 export * from './hierarchy'
 export * from './commands'
@@ -23,6 +26,7 @@ export interface TodoDomain {
   tasks: TaskService
   gpus: GpuService
   timerManager: TimerManager
+  ai: AiReminderService
   getSettings: () => TodoSettings
 }
 
@@ -34,5 +38,11 @@ export function createTodoDomain(
   const gpus = new GpuService(db)
   const getSettings = () => getTodoSettings(db)
   const timerManager = new TimerManager({ ...opts, db, tasks, gpus, getSettings })
-  return { db, tasks, gpus, timerManager, getSettings }
+  const ai = new AiReminderService({
+    db,
+    tasks,
+    broadcast: opts.broadcast as never,
+    now: opts.now,
+  })
+  return { db, tasks, gpus, timerManager, ai, getSettings }
 }

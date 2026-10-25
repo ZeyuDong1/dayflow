@@ -42,7 +42,7 @@
 
 **文件：** 创建 `src/main/todo/ai-reminder.ts`（本任务先落纯部分）、`tests/todo/ai-reminder.test.ts`
 
-- [ ] **步骤 1：编写失败的测试**
+- [x] **步骤 1：编写失败的测试**
 
 ```ts
 describe('normalizeAiReminder', () => {
@@ -56,16 +56,16 @@ describe('AiFeed', () => {
 })
 ```
 
-- [ ] **步骤 2：运行验证失败**
-- [ ] **步骤 3：实现**（语义规格 §3.1/§3.3 逐字）：`normalizeAiReminder(data: unknown, now: number): NormalizedAiReminder`；`createAiFeed(cap=100)` 返回 `{push(entry): void; drain(): NormalizedAiReminder[]}`，entry id 形如 `ai-1` 单调递增。
-- [ ] **步骤 4：运行验证通过**
-- [ ] **步骤 5：Commit** — `feat(todo): AI 提醒归一化与 aiFeed`
+- [x] **步骤 2：运行验证失败**
+- [x] **步骤 3：实现**（语义规格 §3.1/§3.3 逐字）：`normalizeAiReminder(data: unknown, now: number): NormalizedAiReminder`；`createAiFeed(cap=100)` 返回 `{push(entry): void; drain(): NormalizedAiReminder[]}`，entry id 形如 `ai-1` 单调递增。
+- [x] **步骤 4：运行验证通过**
+- [x] **步骤 5：Commit** — `feat(todo): AI 提醒归一化与 aiFeed`
 
 ### 任务 2：AiReminderService（软硬路由 / promote / dismiss）
 
 **文件：** 修改 `src/main/todo/ai-reminder.ts`、测试追加
 
-- [ ] **步骤 1：编写失败的测试**
+- [x] **步骤 1：编写失败的测试**
 
 ```ts
 describe('AiReminderService.handle', () => {
@@ -84,18 +84,18 @@ describe('dismiss', () => { // 审查重点#2
 })
 ```
 
-- [ ] **步骤 2：运行验证失败**
-- [ ] **步骤 3：实现** `class AiReminderService { constructor(deps: {db, tasks, broadcast, now}) }`：
+- [x] **步骤 2：运行验证失败**
+- [x] **步骤 3：实现** `class AiReminderService { constructor(deps: {db, tasks, broadcast, now}) }`：
   `handle(data): {ok:true}`（HARD_REMINDER_STATUSES = success/needs_input/review；落库标题 `🤖 ${source} · ${title}`、type notification、memo `[detail, link].filter(Boolean).join('\n')`）；
   `promote(source, title, detail?, link?)`；`dismiss(input): number`（语义规格 §3.4 全部规则）。
-- [ ] **步骤 4：运行验证通过**
-- [ ] **步骤 5：Commit** — `feat(todo): AI 提醒软硬路由与撤回闭环`
+- [x] **步骤 4：运行验证通过**
+- [x] **步骤 5：Commit** — `feat(todo): AI 提醒软硬路由与撤回闭环`
 
 ### 任务 3：updateTrainingStatus（webhook 训练更新）
 
 **文件：** 修改 `src/main/todo/timer-manager.ts`、创建 `tests/todo/training-update.test.ts`
 
-- [ ] **步骤 1：编写失败的测试**
+- [x] **步骤 1：编写失败的测试**
 
 ```ts
 describe('updateTrainingStatus', () => {
@@ -108,16 +108,16 @@ describe('updateTrainingStatus', () => {
 })
 ```
 
-- [ ] **步骤 2：运行验证失败**
-- [ ] **步骤 3：实现** `TimerManager.updateTrainingStatus(data: {...}): boolean`（语义规格 §2.10 逐条）。
-- [ ] **步骤 4：运行验证通过**
-- [ ] **步骤 5：Commit** — `feat(todo): webhook 训练状态更新与 wandb 压制`
+- [x] **步骤 2：运行验证失败**
+- [x] **步骤 3：实现** `TimerManager.updateTrainingStatus(data: {...}): boolean`（语义规格 §2.10 逐条）。
+- [x] **步骤 4：运行验证通过**
+- [x] **步骤 5：Commit** — `feat(todo): webhook 训练状态更新与 wandb 压制`
 
 ### 任务 4：HTTP 服务器（路由表 + 桌宠桥）
 
 **文件：** 创建 `src/main/todo/server.ts`、`tests/todo/server.test.ts`
 
-- [ ] **步骤 1：编写失败的测试**（`createTodoServer({...port: 0})` 起临时端口，fetch 打真 HTTP）
+- [x] **步骤 1：编写失败的测试**（`createTodoServer({...port: 0})` 起临时端口，fetch 打真 HTTP）
 
 ```ts
 describe('todo server', () => {
@@ -131,19 +131,19 @@ describe('todo server', () => {
 })
 ```
 
-- [ ] **步骤 2：运行验证失败**
-- [ ] **步骤 3：实现** `createTodoServer(deps: {tasks, gpus, timerManager, ai, getSettings, broadcast, now, port?}): {start(): Promise<number>; stop(): Promise<void>}`——路由/状态码/错误文案照语义规格 §7 逐字；`triggerExternalNotification` 合成 `type:'notification'` 伪任务（id=`-1*Date.now()`）走 `timer:ended` 广播。
-- [ ] **步骤 4：运行验证通过**
-- [ ] **步骤 5：Commit** — `feat(todo): 62222 webhook 服务器与桌宠桥`
+- [x] **步骤 2：运行验证失败**
+- [x] **步骤 3：实现** `createTodoServer(deps: {tasks, gpus, timerManager, ai, getSettings, broadcast, now, port?}): {start(): Promise<number>; stop(): Promise<void>}`——路由/状态码/错误文案照语义规格 §7 逐字；`triggerExternalNotification` 合成 `type:'notification'` 伪任务（id=`-1*Date.now()`）走 `timer:ended` 广播。
+- [x] **步骤 4：运行验证通过**
+- [x] **步骤 5：Commit** — `feat(todo): 62222 webhook 服务器与桌宠桥`
 
 ### 任务 5：组合导出 + 文档 + 全量回归
 
 **文件：** 修改 `src/main/todo/index.ts`、`AGENTS.md`
 
-- [ ] **步骤 1：** `index.ts` 导出 ai-reminder/server；`createTodoDomain` 装配 `AiReminderService`。
-- [ ] **步骤 2：** AGENTS.md 更新任务域小节（P2 已接协议层、未接窗口）。
-- [ ] **步骤 3：** `npm test` 全绿 + `npm run typecheck`。
-- [ ] **步骤 4：Commit** — `feat(todo): P2 收尾（协议层组合导出与文档）`
+- [x] **步骤 1：** `index.ts` 导出 ai-reminder/server；`createTodoDomain` 装配 `AiReminderService`。
+- [x] **步骤 2：** AGENTS.md 更新任务域小节（P2 已接协议层、未接窗口）。
+- [x] **步骤 3：** `npm test` 全绿 + `npm run typecheck`。
+- [x] **步骤 4：Commit** — `feat(todo): P2 收尾（协议层组合导出与文档）`
 
 ---
 

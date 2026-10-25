@@ -82,8 +82,9 @@ tools/             # mock-provider.mjs(端到端假AI) / db-set.mjs / patch-*.py
   `docs/superpowers/specs/2026-10-25-epochtodo-*.md`（用户裁决版功能清单优先）。
 - **精确语义值**（勿改）：记账门槛 180s、归档深度上限 20、副焦点 2 个、nag 默认 15 分钟、
   创建去重=精确标题（training 除外）、到期不删行不改状态、reminder 软路径不弹窗。
-- **现状（P1）**：数据层与计时引擎已完成并通过测试；UI/IPC/webhook 未接线（P2 起），`createTodoDomain`
-  尚无调用方。
+- **现状（P2）**：数据层、计时引擎、62222 协议层（/hook 四分支 + 桌宠桥 /bridge/* + AI 提醒软硬路由 +
+  ai-dismiss + webhook 训练更新/wandb 压制）已完成并通过测试（104 例）；窗口/IPC/UI 未接线（P3 起），
+  `createTodoDomain` 尚无调用方。协议兼容基线：payload 形状/状态码/错误英文串逐字节对齐源码。
 
 ## 已知坑（血泪史，勿重蹈）
 
