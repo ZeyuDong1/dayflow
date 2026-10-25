@@ -33,7 +33,7 @@ import { getStandup, generateStandup, getDayPlan, saveDayPlan } from './ai/stand
 import { buildWeeklyReview, buildDaySummary, weekStartFor } from './weekly'
 import { listModels, testConnection } from './ai/providers'
 import { memoryServerInfo, startMemoryServer } from './memory/sidecar'
-import { memoryQuery } from './memory/client'
+import { memoryQuery, memoryWritePage, MEM_GOAL } from './memory/client'
 import { reflectNow, restartReflectionLoop } from './ai/reflect-tick'
 import * as chat from './ai/chat'
 import { exportMarkdown } from './exporter'
@@ -54,6 +54,10 @@ export function registerIpc(win: BrowserWindow): void {
     if (patch.capture) restartCapture()
     if (patch.ai) classifyBacklogApps()
     if (patch.tutor) restartReflectionLoop()
+    // 学习目标写穿到长期记忆,保持设置与记忆一致
+    if (patch.tutor && patch.tutor.goal !== undefined) {
+      void memoryWritePage(MEM_GOAL, `# 学习目标\n${patch.tutor.goal.trim() || '（未设定）'}`, '学习目标').catch(() => {})
+    }
     return next
   })
 

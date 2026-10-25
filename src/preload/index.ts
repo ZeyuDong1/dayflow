@@ -206,6 +206,7 @@ const api = {
     lastError: string | null
   }> => ipcRenderer.invoke('tutor:status'),
   tutorReflectNow: (): Promise<boolean> => ipcRenderer.invoke('tutor:reflectNow'),
+  tutorStartMemory: (): Promise<boolean> => ipcRenderer.invoke('tutor:startMemory'),
   tutorSearchMemory: (
     query: string
   ): Promise<{ path: string; title: string; snippet: string; rank: number }[]> =>

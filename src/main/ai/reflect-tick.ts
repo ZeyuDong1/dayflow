@@ -34,12 +34,13 @@ function collectRecentChatExcerpt(): string {
     .join('\n')
 }
 
-async function tick(): Promise<void> {
-  if (running) return
+async function tick(): Promise<boolean> {
+  if (running) return false
   const settings = getSettings()
-  if (!settings.tutor.enabled) return
-  if (!resolveProvider().ready) return
+  if (!settings.tutor.enabled) return false
+  if (!resolveProvider().ready) return false
   running = true
+  let wrote = false
   try {
     const intervalMs = Math.min(240, Math.max(1, settings.tutor.reflectMinutes)) * 60_000
     const sinceTs = Date.now() - intervalMs
@@ -71,6 +72,8 @@ async function tick(): Promise<void> {
       devMinutes: devMs / 60000,
       chatExcerpt: collectRecentChatExcerpt(),
       llmComplete: (prompt) => textComplete(prompt, 'tutor-reflect')
+    }).then((note) => {
+      wrote = !!note
     })
     console.log('[tutor] reflection tick done')
   } catch (err) {
@@ -78,6 +81,7 @@ async function tick(): Promise<void> {
   } finally {
     running = false
   }
+  return wrote
 }
 
 export function startReflectionLoop(): void {
@@ -101,6 +105,5 @@ export function restartReflectionLoop(): void {
 
 /** 手动触发一次反思(设置页/对话页按钮)。 */
 export async function reflectNow(): Promise<boolean> {
-  await tick()
-  return true
+  return tick()
 }

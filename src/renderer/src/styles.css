@@ -1304,6 +1304,14 @@ label.field {
   font-weight: 550;
 }
 
+.settings-group-title {
+  margin: 20px 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: var(--text-faint);
+}
+
 .settings-row-help {
   font-size: 12px;
   color: var(--text-faint);
