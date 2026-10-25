@@ -3,7 +3,7 @@ import {
   resolveReminderAction,
   defaultSnoozeMinutes,
   getTimerDisplay,
-} from '../../src/main/todo/reminder-logic'
+} from '../../src/shared/reminder-logic'
 
 const T0 = Date.parse('2026-01-01T12:00:00')
 

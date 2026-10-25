@@ -242,7 +242,36 @@ const api = {
     const listener = (_e: unknown, payload: Record<string, unknown>): void => cb(payload)
     ipcRenderer.on('supervision:interrupt', listener)
     return () => ipcRenderer.removeListener('supervision:interrupt', listener)
-  }
+  },
+  // 任务域（EpochToDo 融合）
+  todo: {
+    getTasks: (): Promise<import('../shared/todo-types').TaskRow[]> => ipcRenderer.invoke('todo:get-tasks'),
+    updateTask: (
+      id: number,
+      updates: Partial<import('../shared/todo-types').TaskRow>,
+    ): Promise<import('../shared/todo-types').TaskRow | null> => ipcRenderer.invoke('todo:update-task', id, updates),
+    completeTask: (id: number): void => {
+      ipcRenderer.send('todo:complete-task', id)
+    },
+    startFocus: (id: number): void => {
+      ipcRenderer.send('todo:start-focus', id)
+    },
+    stopTraining: (id: number, force?: boolean): Promise<void> =>
+      ipcRenderer.invoke('todo:stop-training', id, force),
+    snooze: (id: number, minutes: number): Promise<void> => ipcRenderer.invoke('todo:snooze', id, minutes),
+    hideReminder: (): void => {
+      ipcRenderer.send('todo:reminder-hide')
+    },
+    listTaskProjects: (): Promise<import('../shared/todo-types').TaskProject[]> =>
+      ipcRenderer.invoke('todo:list-task-projects'),
+    createTaskProject: (name: string, color?: string): Promise<import('../shared/todo-types').TaskProject> =>
+      ipcRenderer.invoke('todo:create-task-project', name, color),
+    onEvent: (cb: (event: import('../shared/todo-types').TodoEvent) => void): (() => void) => {
+      const listener = (_e: unknown, event: import('../shared/todo-types').TodoEvent): void => cb(event)
+      ipcRenderer.on('todo:event', listener)
+      return () => ipcRenderer.removeListener('todo:event', listener)
+    },
+  },
 }
 
 export type DayflowApi = typeof api

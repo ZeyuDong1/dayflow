@@ -67,6 +67,11 @@ export function registerTodoIpc(reg: IpcRegistry, deps: TodoIpcDeps): void {
   reg.handle('todo:snooze', ((_e: never, taskId: number, minutes: number) =>
     timerManager.snoozeTrainingReminder(taskId, minutes)) as never)
 
+  // 任务项目（独立于类型树）
+  reg.handle('todo:list-task-projects', (() => tasks.listTaskProjects()) as never)
+  reg.handle('todo:create-task-project', ((_e: never, name: string, color?: string) =>
+    tasks.createTaskProject(name, color)) as never)
+
   // AI 域
   reg.handle('todo:ai-promote', ((_e: never, source: string, title: string, detail?: string, link?: string) =>
     ai.promote(source, title, detail, link)) as never)

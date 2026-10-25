@@ -3,7 +3,7 @@
  * 语义对齐语义规格 §1.3；纯 DB 层，不碰计时（计时在 TimerManager）。
  */
 import type { TodoDB } from './db'
-import type { TaskRow, TaskStatus, TaskType } from '../../shared/todo-types'
+import type { TaskRow, TaskStatus, TaskType, TaskProject } from '../../shared/todo-types'
 
 export interface CreateTaskOpts {
   tag?: string
@@ -134,6 +134,20 @@ export class TaskService {
     this.db.run('DELETE FROM timers')
     this.db.run('DELETE FROM history')
     this.db.run('DELETE FROM tasks')
+  }
+
+  /** 任务项目（独立于 Dayflow 类型树的轻量列表）。 */
+  listTaskProjects(): TaskProject[] {
+    return this.db.all<TaskProject>('SELECT * FROM task_projects ORDER BY id ASC')
+  }
+
+  createTaskProject(name: string, color?: string | null): TaskProject {
+    const now = new Date().toISOString()
+    this.db.run('INSERT INTO task_projects (name, color, created_at) VALUES (?, ?, ?)', [name, color ?? null, now])
+    return this.db.get<TaskProject>('SELECT * FROM task_projects WHERE created_at = ? AND name = ? ORDER BY id DESC LIMIT 1', [
+      now,
+      name,
+    ])!
   }
 
   /** 完成：自身+全部未归档后代批量归档（BFS，深度上限 20 防环），返回归档 id 列表。 */

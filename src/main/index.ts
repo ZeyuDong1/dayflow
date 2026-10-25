@@ -19,6 +19,7 @@ import { supervisionSync, stopSupervision } from './supervision'
 import { startReflectionLoop, stopReflectionLoop } from './ai/reflect-tick'
 import { startCleanupSchedule, stopCleanupSchedule } from './cleanup'
 import { registerIpc } from './ipc'
+import { createTodoRuntime } from './todo/wiring'
 import { installAppMenu } from './menu'
 import { updateTray, destroyTray } from './tray'
 import { startWindowTracking, stopWindowTracking } from './windows-poll'
@@ -123,6 +124,8 @@ if (!gotLock) {
 
     mainWindow = createWindow()
     registerIpc(mainWindow)
+    const todoRuntime = createTodoRuntime()
+    void todoRuntime.start()
     installAppMenu(() => mainWindow)
 
     initPowerMonitoring()

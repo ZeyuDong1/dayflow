@@ -64,3 +64,30 @@ export interface GpuRow {
   created_at: string
   last_active_at: string | null
 }
+
+/** 主进程广播到渲染端的统一事件（channel: 'todo:event'） */
+export interface TodoEvent {
+  type:
+    | 'timer:update'
+    | 'timer:ended'
+    | 'timer:training-update'
+    | 'fetch-tasks'
+    | 'ai:reminder'
+    | 'ai:reminder-dismissed'
+  taskId?: number
+  task?: TaskRow | { id: number; title: string; context_memo: string | null; type: string } | null
+  reminder?: {
+    id: string
+    source: string
+    title: string
+    status: string
+    detail?: string
+    link?: string
+    timestamp: number
+  }
+  source?: string
+  title?: string
+  force?: boolean
+  dismissed?: number
+  status?: unknown
+}
