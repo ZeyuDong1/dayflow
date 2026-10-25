@@ -3,7 +3,7 @@
  * 解析（parseCommand）在 commands.ts；本模块把 ParsedCommand + 上下文映射为领域调用序列。
  */
 import type { ParsedCommand } from './commands'
-import type { TaskRow } from '../../shared/todo-types'
+import type { TaskRow } from './todo-types'
 
 export interface ExecGpu {
   id: number

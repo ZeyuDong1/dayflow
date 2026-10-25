@@ -17,9 +17,10 @@ export * from './gpu-service'
 export * from './timer-manager'
 export * from './ai-reminder'
 export * from './server'
+export * from '../../shared/commands'
 export * from './priority'
 export * from './hierarchy'
-export * from './commands'
+
 
 export interface TodoDomain {
   db: TodoDB

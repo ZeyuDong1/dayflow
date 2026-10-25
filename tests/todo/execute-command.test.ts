@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import { parseCommand } from '../../src/main/todo/commands'
+import { parseCommand } from '../../src/shared/commands'
 import {
   executeCommand,
   confirmGpuPick,
   cleanupDraftTasks,
   type ExecDomainOps,
   type ExecCtx,
-} from '../../src/main/todo/execute-command'
+} from '../../src/shared/execute-command'
 import type { TaskRow } from '../../src/shared/todo-types'
 
 let seq = 100

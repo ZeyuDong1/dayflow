@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseCommand } from '../../src/main/todo/commands'
+import { parseCommand } from '../../src/shared/commands'
 
 describe('parseCommand', () => {
   it('空输入', () => {

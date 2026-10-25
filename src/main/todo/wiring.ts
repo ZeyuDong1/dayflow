@@ -13,6 +13,14 @@ import { createTodoServer, type TodoServer } from './server'
 import { getTodoSettings, saveTodoSettings, type TodoSettings, type DeepPartial } from './settings'
 import { registerTodoIpc, type TodoIpcDeps } from './ipc-registry'
 import { showReminderWindow, hideReminderWindow, getReminderWindow, sendToReminder } from './reminder-window'
+import {
+  setDraftCleanup,
+  toggleSpotlight,
+  hideSpotlight,
+  registerSpotlightShortcut,
+  unregisterShortcuts,
+} from './spotlight-window'
+import { cleanupDraftTasks } from '../../shared/execute-command'
 
 export interface TodoRuntime {
   tasks: TaskService
@@ -76,7 +84,11 @@ export function createTodoRuntime(opts: { port?: number } = {}): TodoRuntime {
     getSettings,
     saveSettings: (patch: DeepPartial<TodoSettings>) => saveTodoSettings(db, patch),
     hideReminder: () => hideReminderWindow(),
+    hideSpotlight: () => hideSpotlight(),
   }
+  setDraftCleanup(() => {
+    cleanupDraftTasks(tasks.getAllTasks(), (id) => tasks.deleteTask(id))
+  })
   registerTodoIpc(
     {
       handle: (ch, fn) => ipcMain.handle(ch, fn as never),
@@ -93,6 +105,7 @@ export function createTodoRuntime(opts: { port?: number } = {}): TodoRuntime {
     server,
     async start() {
       timerManager.start()
+      registerSpotlightShortcut('Alt+Space', toggleSpotlight) // 失败仅记日志
       try {
         await server.start()
       } catch {
@@ -100,6 +113,7 @@ export function createTodoRuntime(opts: { port?: number } = {}): TodoRuntime {
       }
     },
     async stop() {
+      unregisterShortcuts()
       timerManager.stop()
       await server.stop()
     },
