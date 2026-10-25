@@ -203,7 +203,46 @@ const api = {
     productivityIndex: number | null
   }> => ipcRenderer.invoke('report:projectStats', startDay, endDay),
   exportTimesheet: (startDay: string, endDay: string): Promise<{ ok: boolean; message: string }> =>
-    ipcRenderer.invoke('report:timesheet', startDay, endDay)
+    ipcRenderer.invoke('report:timesheet', startDay, endDay),
+
+  // 学习导师（记忆 + 反思）
+  tutorStatus: (): Promise<{
+    running: boolean
+    port: number
+    dataDir: string
+    binaryPath: string
+    version: string
+    lastError: string | null
+  }> => ipcRenderer.invoke('tutor:status'),
+  tutorReflectNow: (): Promise<boolean> => ipcRenderer.invoke('tutor:reflectNow'),
+  tutorStartMemory: (): Promise<boolean> => ipcRenderer.invoke('tutor:startMemory'),
+  tutorSearchMemory: (
+    query: string
+  ): Promise<{ path: string; title: string; snippet: string; rank: number }[]> =>
+    ipcRenderer.invoke('tutor:searchMemory', query),
+
+  // 学习监督(升级阶梯打断 + 强打断面板)
+  supervisionStatus: (): Promise<{
+    active: boolean
+    deviating: boolean
+    devMinutes: number
+    breakUntil: number | null
+    pausedToday: boolean
+    overlayOpen: boolean
+  }> => ipcRenderer.invoke('supervision:status'),
+  supervisionFeedback: (text: string): Promise<string> =>
+    ipcRenderer.invoke('supervision:feedback', text),
+  supervisionBreak: (minutes?: number): Promise<boolean> =>
+    ipcRenderer.invoke('supervision:break', minutes),
+  supervisionStopToday: (): Promise<boolean> => ipcRenderer.invoke('supervision:stopToday'),
+  supervisionPreview: (): Promise<boolean> => ipcRenderer.invoke('supervision:preview'),
+  supervisionInterruptState: (): Promise<Record<string, unknown> | null> =>
+    ipcRenderer.invoke('supervision:interruptState'),
+  onSupervisionInterrupt: (cb: (payload: Record<string, unknown>) => void): (() => void) => {
+    const listener = (_e: unknown, payload: Record<string, unknown>): void => cb(payload)
+    ipcRenderer.on('supervision:interrupt', listener)
+    return () => ipcRenderer.removeListener('supervision:interrupt', listener)
+  }
 }
 
 export type DayflowApi = typeof api

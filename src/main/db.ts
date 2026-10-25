@@ -184,6 +184,27 @@ class DB {
           updated_at INTEGER,
           PRIMARY KEY (app_name, title_pattern)
       );
+
+      -- 学习守护（常驻 Agent）：打断/提醒事件史 + 今日累计 -----
+
+      CREATE TABLE IF NOT EXISTS tutor_events (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          ts INTEGER NOT NULL,
+          type TEXT NOT NULL,
+          app_name TEXT,
+          title TEXT,
+          detail TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_tutor_events_ts ON tutor_events(ts);
+
+      CREATE TABLE IF NOT EXISTS tutor_daily (
+          day TEXT NOT NULL,
+          focus_ms INTEGER NOT NULL DEFAULT 0,
+          dev_ms INTEGER NOT NULL DEFAULT 0,
+          interrupt_count INTEGER NOT NULL DEFAULT 0,
+          updated_at INTEGER,
+          PRIMARY KEY (day)
+      );
     `)
     // 迁移：无输入标记列
     try {

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import type { AppSettings, DeepPartial, ProviderId, StorageUsage } from '@shared/types'
+import type { AppSettings, DeepPartial, ProviderId, Project, StorageUsage } from '@shared/types'
 import { addDays, formatBytes } from '../lib/format'
 
 const PROVIDERS: { id: ProviderId; name: string; desc: string; needsKey: boolean; vision: string }[] = [
@@ -24,7 +24,7 @@ const ROLES = [
   'Other'
 ]
 
-type Tab = 'ai' | 'recording' | 'storage' | 'data' | 'general'
+type Tab = 'ai' | 'tutor' | 'recording' | 'storage' | 'data' | 'general'
 
 function mergeDeep<T>(base: T, patch: DeepPartial<T> | Partial<T>): T {
   const out: Record<string, unknown> = { ...(base as Record<string, unknown>) }
@@ -42,6 +42,10 @@ export default function SettingsPage({ onSaved }: { onSaved: () => void }): Reac
   const [settings, setSettings] = useState<AppSettings | null>(null)
   const [usage, setUsage] = useState<StorageUsage | null>(null)
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null)
+  const [tutorStatus, setTutorStatus] = useState<Awaited<ReturnType<typeof window.dayflow.tutorStatus>> | null>(null)
+  const [projects, setProjects] = useState<Project[]>([])
+  const [goalDraft, setGoalDraft] = useState<string | null>(null)
+  const [reflectMsg, setReflectMsg] = useState('')
   const [testing, setTesting] = useState(false)
   const [modelFetch, setModelFetch] = useState<
     Record<string, { loading: boolean; models: string[]; message?: string; error?: string; source?: string }>
@@ -54,6 +58,8 @@ export default function SettingsPage({ onSaved }: { onSaved: () => void }): Reac
   useEffect(() => {
     void window.dayflow.getSettings().then(setSettings)
     void window.dayflow.getStorageUsage().then(setUsage)
+    void window.dayflow.tutorStatus().then(setTutorStatus)
+    void window.dayflow.listProjects().then(setProjects)
     void window.dayflow.getTodayKey().then((t) => {
       setExportStart(t)
       setExportEnd(t)
@@ -71,6 +77,18 @@ export default function SettingsPage({ onSaved }: { onSaved: () => void }): Reac
     },
     [onSaved]
   )
+
+  const doReflect = (): void => {
+    setReflectMsg('反思中…')
+    void window.dayflow
+      .tutorReflectNow()
+      .then((ok) => {
+        setReflectMsg(ok ? '已沉淀一条反思记忆' : '未生成(检查 AI 提供商与导师开关)')
+        return window.dayflow.tutorStatus()
+      })
+      .then(setTutorStatus)
+      .catch(() => setReflectMsg('反思失败'))
+  }
 
   const test = (): void => {
     setTesting(true)
@@ -184,6 +202,7 @@ export default function SettingsPage({ onSaved }: { onSaved: () => void }): Reac
         {(
           [
             ['ai', 'AI 提供商'],
+            ['tutor', '导师'],
             ['recording', '录制'],
                   ['storage', '存储'],
             ['data', '数据'],
@@ -546,6 +565,211 @@ export default function SettingsPage({ onSaved }: { onSaved: () => void }): Reac
             </div>
           </div>
         </>
+      )}
+
+      {tab === 'tutor' && (
+        <div className="panel">
+          <div className="settings-row">
+            <div>
+              <div className="settings-row-label">学习导师</div>
+              <div className="settings-row-help">
+                小舟是常驻的学习导师：记得你的目标和进度，随时陪你聊学习、给进入心流的建议，发现分心时主动提醒。对话页就是和它聊天。
+              </div>
+            </div>
+            <button
+              className={`switch ${settings.tutor.enabled ? 'on' : ''}`}
+              onClick={() => patch({ tutor: { enabled: !settings.tutor.enabled } })}
+            />
+          </div>
+
+          <div className="settings-row" style={{ alignItems: 'flex-start' }}>
+            <div>
+              <div className="settings-row-label">学习目标</div>
+              <div className="settings-row-help">导师围绕这个目标辅导和建议，并写入长期记忆。失焦保存。</div>
+            </div>
+            <textarea
+              rows={2}
+              style={{ width: 320, resize: 'vertical' }}
+              value={goalDraft ?? settings.tutor.goal}
+              onChange={(e) => setGoalDraft(e.target.value)}
+              onBlur={() => {
+                if (goalDraft !== null && goalDraft !== settings.tutor.goal) patch({ tutor: { goal: goalDraft } })
+              }}
+              placeholder="例如：本周完成 TypeScript 泛型章节"
+            />
+          </div>
+
+          <div className="settings-row">
+            <div>
+              <div className="settings-row-label">导师反思间隔</div>
+              <div className="settings-row-help">
+                后台把最近的活动和对话沉淀成一条反思记忆的节奏。LLM 只在反思与对话时调用，常驻监测零消耗。
+              </div>
+            </div>
+            <select
+              value={settings.tutor.reflectMinutes}
+              onChange={(e) => patch({ tutor: { reflectMinutes: Number(e.target.value) } })}
+            >
+              {[1, 5, 10, 15, 30, 60, 120, 240].map((m) => (
+                <option key={m} value={m}>
+                  每 {m} 分钟
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="settings-row">
+            <div>
+              <div className="settings-row-label">记忆服务</div>
+              <div className="settings-row-help">
+                {tutorStatus
+                  ? tutorStatus.running
+                    ? `ai-memory v${tutorStatus.version} 运行中`
+                    : `未运行${tutorStatus.lastError ? ' · ' + tutorStatus.lastError : ''}`
+                  : '检查中…'}
+                {reflectMsg ? ` · ${reflectMsg}` : ''}
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {!tutorStatus?.running && (
+                <button
+                  className="btn small"
+                  onClick={() =>
+                    void window.dayflow
+                      .tutorStartMemory()
+                      .then(() => window.dayflow.tutorStatus())
+                      .then(setTutorStatus)
+                  }
+                >
+                  启动记忆服务
+                </button>
+              )}
+              <button className="btn small" onClick={doReflect}>
+                立即反思
+              </button>
+            </div>
+          </div>
+
+          <div className="settings-group-title">监督打断 · 分心时主动提醒</div>
+          <div className="settings-row">
+            <div>
+              <div className="settings-row-label">轻提醒</div>
+              <div className="settings-row-help">分心持续超过此时长，桌面通知轻推（可延迟一次）。</div>
+            </div>
+            <select
+              value={settings.tutor.gentleSec / 60}
+              onChange={(e) => patch({ tutor: { gentleSec: Number(e.target.value) * 60 } })}
+            >
+              {[1, 2, 3, 5, 10].map((m) => (
+                <option key={m} value={m}>
+                  {m} 分钟
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="settings-row">
+            <div>
+              <div className="settings-row-label">强打断</div>
+              <div className="settings-row-help">超过此时长仍未回到学习，置顶弹窗 + 提示音。</div>
+            </div>
+            <select
+              value={settings.tutor.interruptSec / 60}
+              onChange={(e) => patch({ tutor: { interruptSec: Number(e.target.value) * 60 } })}
+            >
+              {[2, 3, 5, 10, 15].map((m) => (
+                <option key={m} value={m}>
+                  {m} 分钟
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="settings-row">
+            <div>
+              <div className="settings-row-label">重复提醒间隔</div>
+              <div className="settings-row-help">持续分心时每隔此时长再打断一次；判定为心流状态时不打扰。</div>
+            </div>
+            <select
+              value={settings.tutor.repeatSec / 60}
+              onChange={(e) => patch({ tutor: { repeatSec: Number(e.target.value) * 60 } })}
+            >
+              {[5, 10, 15, 20, 30].map((m) => (
+                <option key={m} value={m}>
+                  {m} 分钟
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="settings-row">
+            <div>
+              <div className="settings-row-label">一键休息时长</div>
+              <div className="settings-row-help">被打断后选择“休息一下”的默认时长，期间不打扰。</div>
+            </div>
+            <select
+              value={settings.tutor.breakMinutes}
+              onChange={(e) => patch({ tutor: { breakMinutes: Number(e.target.value) } })}
+            >
+              {[5, 10, 15, 20, 30].map((m) => (
+                <option key={m} value={m}>
+                  {m} 分钟
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="settings-row">
+            <div>
+              <div className="settings-row-label">提醒声音</div>
+              <div className="settings-row-help">强打断时播放提示音。</div>
+            </div>
+            <button
+              className={`switch ${settings.tutor.soundEnabled ? 'on' : ''}`}
+              onClick={() => patch({ tutor: { soundEnabled: !settings.tutor.soundEnabled } })}
+            />
+          </div>
+          <div className="settings-row">
+            <div>
+              <div className="settings-row-label">预览强打断</div>
+              <div className="settings-row-help">
+                对当前窗口演示打断面板：恰好盖住内容区、让出标题栏；把底下窗口最小化或切走，面板自动消失。
+              </div>
+            </div>
+            <button className="btn small" onClick={() => void window.dayflow.supervisionPreview()}>
+              预览
+            </button>
+          </div>
+
+          <div className="settings-group-title">学习项目白名单</div>
+          <div className="settings-row" style={{ alignItems: 'flex-start' }}>
+            <div>
+              <div className="settings-row-label">算作“学习”的项目</div>
+              <div className="settings-row-help">
+                监督按白名单判定学习/分心。留空则按效率分自动判定（≥6 学习，≤3 分心）。
+              </div>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, maxWidth: 330, justifyContent: 'flex-end' }}>
+              {projects.map((p) => {
+                const on = settings.tutor.allowedProjectIds.includes(p.id)
+                return (
+                  <button
+                    key={p.id}
+                    className="suggestion-chip"
+                    style={on ? { borderColor: '#e8763a', color: '#e8763a', background: '#fff3ea' } : undefined}
+                    onClick={() =>
+                      patch({
+                        tutor: {
+                          allowedProjectIds: on
+                            ? settings.tutor.allowedProjectIds.filter((x) => x !== p.id)
+                            : [...settings.tutor.allowedProjectIds, p.id]
+                        }
+                      })
+                    }
+                  >
+                    {p.title}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </div>
       )}
 
       {tab === 'recording' && (

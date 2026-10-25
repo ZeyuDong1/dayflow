@@ -2,8 +2,9 @@ import crypto from 'crypto'
 import { BrowserWindow } from 'electron'
 import { db } from '../db'
 import { getCardsInRange } from './analyze'
-import { chatStream, type ChatTurn } from './providers'
-import { buildChatSystemPrompt } from './prompts'
+import { chatStream, textComplete, type ChatTurn } from './providers'
+import { buildTutorSystemPrompt, extractAndSaveMemo, stripMemoLine, buildGreeting } from './tutor'
+import { gatherMemory } from '../memory/client'
 import { addDaysKey, todayKey } from '../paths'
 import type { ChatConversation, ChatMessage } from '../../shared/types'
 
@@ -25,6 +26,16 @@ export function createConversation(title: string): ChatConversation {
     now,
     now
   ])
+  // 导师开场白:先放占位(保证 sort_order=0),再异步换成结合记忆的个性化问候。
+  db.run(
+    'INSERT INTO chat_messages (conversation_id, role, content, created_at, sort_order) VALUES (?, ?, ?, ?, ?)',
+    [id, 'assistant', '在。今天想从哪开始?', now, 0]
+  )
+  void buildGreeting((p) => textComplete(p, 'tutor-greet'))
+    .then((greeting) => {
+      db.run('UPDATE chat_messages SET content = ? WHERE conversation_id = ? AND sort_order = 0', [greeting, id])
+    })
+    .catch(() => {})
   return { id, title: title.slice(0, 80) || 'New chat', createdAt: now, updatedAt: now }
 }
 
@@ -183,7 +194,9 @@ export async function sendChat(
     }
   }
 
-  const system = buildChatSystemPrompt(
+  const memory = await gatherMemory(question)
+  const system = buildTutorSystemPrompt(
+    memory,
     new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
     new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
   )
@@ -205,12 +218,15 @@ export async function sendChat(
       controller.signal
     )
     if (!controller.signal.aborted) {
+      // MEMO: 导师默默记住重要事实(写入长期记忆),用户不需要看到这行。
+      void extractAndSaveMemo(full).catch(() => {})
+      const clean = stripMemoLine(full)
       db.run(
         'INSERT INTO chat_messages (conversation_id, role, content, created_at, sort_order) VALUES (?, ?, ?, ?, ?)',
-        [conversationId, 'assistant', full, Date.now(), sortOrder + 1]
+        [conversationId, 'assistant', clean, Date.now(), sortOrder + 1]
       )
       db.run('UPDATE chat_conversations SET updated_at = ? WHERE id = ?', [Date.now(), conversationId])
-      handlers.onDone(full)
+      handlers.onDone(clean)
     }
   } catch (err) {
     if (!controller.signal.aborted) {

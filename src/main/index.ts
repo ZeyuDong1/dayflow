@@ -12,6 +12,11 @@ import {
   captureEnabled
 } from './capture'
 import { startPipeline, stopPipeline, onCardsChanged } from './ai/analyze'
+import { startMemoryServer, stopMemoryServer } from './memory/sidecar'
+import { bootstrapMemory } from './memory/client'
+import { seedKnowledge } from './ai/knowledge'
+import { supervisionSync, stopSupervision } from './supervision'
+import { startReflectionLoop, stopReflectionLoop } from './ai/reflect-tick'
 import { startCleanupSchedule, stopCleanupSchedule } from './cleanup'
 import { registerIpc } from './ipc'
 import { installAppMenu } from './menu'
@@ -136,6 +141,15 @@ if (!gotLock) {
     applyLoginItem()
     updateTray(showMainWindow)
 
+    // 记忆侧车(ai-memory) + 知识库种子 + 导师反思循环 + 学习监督。
+    void startMemoryServer().then(async (ok) => {
+      if (!ok) return
+      await bootstrapMemory(getSettings().tutor.goal)
+      await seedKnowledge()
+      startReflectionLoop()
+    })
+    supervisionSync()
+
     // Classify never-seen apps (including a backlog from before setup).
     classifyBacklogApps()
 
@@ -181,13 +195,24 @@ if (!gotLock) {
             return undefined
           })
           // 隐藏窗口里合成器会停帧，DOM 变更不被绘制；强制重绘后再截，
-          // 否则 capturePage 抓到的是点击前的陈旧帧。
-          .then(() => {
-            if (!mainWindow || mainWindow.isDestroyed()) return null
-            mainWindow.webContents.invalidate()
-            return new Promise((resolve) => setTimeout(resolve, 500))
+          // 否则 capturePage 抓到的是点击前的陈旧帧。DAYFLOW_SHOT_WIN=interrupt
+          // 时改为截取强打断面板（按 #/interrupt 定位）。
+          .then((): Promise<BrowserWindow | null> => {
+            const target =
+              process.env.DAYFLOW_SHOT_WIN === 'interrupt'
+                ? (BrowserWindow.getAllWindows().find(
+                    (w) => !w.isDestroyed() && w.webContents.getURL().includes('#/interrupt')
+                  ) ?? mainWindow)
+                : mainWindow
+            if (!target || target.isDestroyed()) return Promise.resolve(null)
+            const wins = BrowserWindow.getAllWindows().map(
+              (w) => `${w.isDestroyed() ? 'DESTROYED' : w.webContents.getURL()} | ${w.getTitle()}`
+            )
+            console.log('[shot-wins]', JSON.stringify(wins))
+            target.webContents.invalidate()
+            return new Promise((resolve) => setTimeout(() => resolve(target), 500))
           })
-          .then(() => (mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents.capturePage() : null))
+          .then((target) => (target && !target.isDestroyed() ? target.webContents.capturePage() : null))
           .then((img) => {
             if (img) fs.writeFileSync(shotPath, img.toPNG())
             console.log(`[screenshot] saved ${shotPath}`)
@@ -203,6 +228,9 @@ app.on('before-quit', () => {
   stopCapture()
   stopWindowTracking()
   stopPipeline()
+  stopReflectionLoop()
+  stopMemoryServer()
+  stopSupervision()
   stopCleanupSchedule()
   db.flush()
 })
