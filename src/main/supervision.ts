@@ -10,7 +10,12 @@ import {
   isWindowUsable,
   type ForegroundInfo
 } from './foreground'
-import { buildNudge, saveFeedbackToMemory } from './ai/tutor'
+import {
+  buildNudgeFallback,
+  getCachedNudge,
+  saveFeedbackToMemory,
+  updateNudgeFromFeedback
+} from './ai/tutor'
 import { textComplete, resolveProvider } from './ai/providers'
 
 /**
@@ -192,43 +197,53 @@ function showInterrupt(ep: Episode, geom: { left: number; top: number; width: nu
 async function interruptPayload(ep: Episode): Promise<Record<string, unknown>> {
   const settings = getSettings()
   const devMinutes = (Date.now() - ep.startTs) / 60000
-  const llm = resolveProvider().ready ? (p: string) => textComplete(p, 'tutor-nudge') : undefined
-  const nudge = await buildNudge(devMinutes, ep.appName, llm)
-  const payload: Record<string, unknown> = {
+  // 打断瞬间零 LLM:直接显示反思/反馈时刻预备好的常驻督促语,缺失才用兜底句
+  const nudge = getCachedNudge() || buildNudgeFallback(devMinutes, ep.appName)
+  return {
     goal: settings.tutor.goal,
     appName: ep.appName,
     title: ep.title,
     devMinutes: Math.round(devMinutes),
     breakMinutes: settings.tutor.breakMinutes,
     soundEnabled: settings.tutor.soundEnabled,
-    nudge: nudge.instant
+    nudge
   }
-  if (nudge.llm) {
-    void nudge.llm.then((line) => {
-      if (line && interruptWin && !interruptWin.isDestroyed()) {
-        interruptWin.webContents.send('supervision:interrupt', { ...payload, nudge: line })
-      }
-    })
-  }
-  return payload
 }
 
 // ---------------------------------------------------------------------------
 // 面板动作(来自渲染层 IPC)
 // ---------------------------------------------------------------------------
 
-export async function submitFeedback(text: string): Promise<string> {
-  logEvent('feedback', episode?.appName ?? null, episode?.title ?? null, text.slice(0, 200))
-  void saveFeedbackToMemory(text).catch(() => {})
-  const ack = '记下了。回来只用 2 分钟——先做最小的那一步。'
+const ACK_FALLBACK = '记下了。回来只用 2 分钟——先做最小的那一步。'
+
+function pushToPanel(nudge: string, closeMs: number | null): void {
+  lastPayload = { ...(lastPayload ?? {}), nudge, done: true }
   if (interruptWin && !interruptWin.isDestroyed()) {
-    interruptWin.webContents.send('supervision:interrupt', { ...(lastPayload ?? {}), nudge: ack, done: true })
+    interruptWin.webContents.send('supervision:interrupt', lastPayload)
+  }
+  if (closeMs !== null) {
     setTimeout(() => {
       closeInterrupt()
       if (episode) episode.startTs = Date.now() // 回来后重新计时
-    }, 1800)
+    }, closeMs)
   }
-  return ack
+}
+
+export async function submitFeedback(text: string): Promise<string> {
+  logEvent('feedback', episode?.appName ?? null, episode?.title ?? null, text.slice(0, 200))
+  void saveFeedbackToMemory(text).catch(() => {})
+  // 先给即时回执,再让 LLM 按反馈重写"下次说的引导"并更新面板展示——
+  // 更新结果常驻,下次打断弹出时直接显示,不再单独等 LLM。
+  pushToPanel('记下了,让小舟想一想该怎么陪你回来…', null)
+  const llm = resolveProvider().ready ? (p: string) => textComplete(p, 'tutor-feedback') : undefined
+  if (llm) {
+    void updateNudgeFromFeedback(text, llm)
+      .then((nudge) => pushToPanel(nudge ?? ACK_FALLBACK, 5000))
+      .catch(() => pushToPanel(ACK_FALLBACK, 1800))
+  } else {
+    pushToPanel(ACK_FALLBACK, 1800)
+  }
+  return ACK_FALLBACK
 }
 
 export function takeBreak(minutes?: number): void {

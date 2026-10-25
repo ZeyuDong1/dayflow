@@ -90,6 +90,14 @@ const server = http.createServer((req, res) => {
       if (/你是「小舟」/.test(promptText)) {
         text += '\nMEMO: e2e记忆回收验证:用户目标是学好 TypeScript 泛型'
       }
+      // 反思 tick 双输出(JSON)与反馈驱动督促语更新的断言。
+      // 注意 promptText 是 JSON.stringify 产物,内层引号带转义——用无引号关键词匹配。
+      if (/reflection/.test(promptText) && /nudge/.test(promptText) && /后台思考/.test(promptText)) {
+        text = '{"reflection":"e2e反思:最近的分心模式已经记录下来。","nudge":"NUDGE-TEST 该回到学习了,只做 2 分钟"}'
+      }
+      if (/心理反馈/.test(promptText)) {
+        text = 'FEEDBACK-REPLY 看到你说的原因了,下次我会用更软的方式拉你回来'
+      }
     }
 
     if (isStream && isAnthropic) {
