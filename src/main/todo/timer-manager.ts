@@ -249,4 +249,26 @@ export class TimerManager {
   cancelAll(): void {
     for (const taskId of [...this.waitTimers.keys()]) this.clearWaitTimeout(taskId)
   }
+
+  /** 完成任务：焦点移交父（无父则停止）→ 级联归档子树 → 清其计时。 */
+  completeTask(taskId: number): void {
+    const { db, tasks, broadcast } = this.deps
+    const task = tasks.getTask(taskId)
+    if (!task) return
+    const focusRow = db.get<{ id: number }>(
+      "SELECT id FROM timers WHERE task_id = ? AND type = 'focus' LIMIT 1",
+      [taskId],
+    )
+    if (focusRow) {
+      if (task.parent_id != null) this.startFocus(task.parent_id)
+      else this.stopFocus()
+    }
+    const archived = tasks.completeSubtree(taskId)
+    for (const id of archived) this.clearWaitTimeout(id)
+    if (archived.length > 0) {
+      const marks = archived.map(() => '?').join(',')
+      db.run(`DELETE FROM timers WHERE task_id IN (${marks})`, archived)
+    }
+    broadcast({ type: 'fetch-tasks' })
+  }
 }

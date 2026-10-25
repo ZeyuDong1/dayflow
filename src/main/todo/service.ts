@@ -136,6 +136,30 @@ export class TaskService {
     this.db.run('DELETE FROM tasks')
   }
 
+  /** 完成：自身+全部未归档后代批量归档（BFS，深度上限 20 防环），返回归档 id 列表。 */
+  completeSubtree(id: number): number[] {
+    const collected: number[] = []
+    const visited = new Set<number>()
+    const queue: { id: number; depth: number }[] = [{ id, depth: 0 }]
+    while (queue.length > 0) {
+      const cur = queue.shift()!
+      if (visited.has(cur.id)) continue
+      visited.add(cur.id)
+      const task = this.getTask(cur.id)
+      if (!task || task.status === 'archived') continue
+      collected.push(cur.id)
+      if (cur.depth >= 20) continue // 深度上限
+      for (const c of this.db.all<{ id: number }>('SELECT id FROM tasks WHERE parent_id = ?', [cur.id])) {
+        queue.push({ id: c.id, depth: cur.depth + 1 })
+      }
+    }
+    if (collected.length > 0) {
+      const marks = collected.map(() => '?').join(',')
+      this.db.run(`UPDATE tasks SET status = 'archived' WHERE id IN (${marks})`, collected)
+    }
+    return collected
+  }
+
   /** 副焦点（◎，最多 2 个）：archived/active 的带旗任务不占额度；满员返回 false 不改动。 */
   setSideFocus(id: number, enabled: boolean): boolean {
     const task = this.getTask(id)
