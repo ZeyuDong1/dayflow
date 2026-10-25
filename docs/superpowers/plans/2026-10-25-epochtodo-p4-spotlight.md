@@ -41,7 +41,7 @@
 
 **文件：** 创建 `src/main/todo/execute-command.ts`、`tests/todo/execute-command.test.ts`
 
-- [ ] **步骤 1：编写失败的测试**（ctx 用假 DomainOps 记录调用序列）
+- [x] **步骤 1：编写失败的测试**（ctx 用假 DomainOps 记录调用序列）
 
 ```ts
 describe('executeCommand', () => {
@@ -61,33 +61,33 @@ describe('cleanupDraftTasks', () => {
 })
 ```
 
-- [ ] **步骤 2：运行验证失败**
-- [ ] **步骤 3：实现** `executeCommand(parsed: ParsedCommand, ctx: ExecCtx): ExecResult`——ctx 提供 `{activeTask, highlighted, domainOps}`；domainOps 接口（createTask/updateTask/appendMemo/startFocus/startWait/assignTaskToGpu/getTasks）由 wiring 适配真实 domain。语义照语义规格 §4.3 逐分支。
-- [ ] **步骤 4：运行验证通过**
-- [ ] **步骤 5：Commit** — `feat(todo): Spotlight 命令执行语义`
+- [x] **步骤 2：运行验证失败**
+- [x] **步骤 3：实现** `executeCommand(parsed: ParsedCommand, ctx: ExecCtx): ExecResult`——ctx 提供 `{activeTask, highlighted, domainOps}`；domainOps 接口（createTask/updateTask/appendMemo/startFocus/startWait/assignTaskToGpu/getTasks）由 wiring 适配真实 domain。语义照语义规格 §4.3 逐分支。
+- [x] **步骤 4：运行验证通过**
+- [x] **步骤 5：Commit** — `feat(todo): Spotlight 命令执行语义`
 
 ### 任务 2：窗口管理 + 热键
 
 **文件：** 创建 `src/main/todo/spotlight-window.ts`；修改 `wiring.ts`、`ipc-registry.ts`（`todo:toggle-spotlight`）
 
-- [ ] **步骤 1：** `spotlight-window.ts`：`toggleSpotlight()`（显隐切换、每次显示居中到光标显示器、销毁重建）、`registerShortcut(accelerator)`/`setShortcut`（unregisterAll 重注册）、隐藏时 `cleanupDraftTasks`。
-- [ ] **步骤 2：** wiring 装配（`globalShortcut.register('Alt+Space', toggleSpotlight)`，失败仅日志）；`will-quit` 注销。
-- [ ] **步骤 3：** 自测：构建后手按 Alt+Space 或 DAYFLOW_SHOT_JS 注入验证显隐；typecheck/test 全绿。
-- [ ] **步骤 4：Commit** — `feat(todo): Spotlight 窗口与全局热键`
+- [x] **步骤 1：** `spotlight-window.ts`：`toggleSpotlight()`（显隐切换、每次显示居中到光标显示器、销毁重建）、`registerShortcut(accelerator)`/`setShortcut`（unregisterAll 重注册）、隐藏时 `cleanupDraftTasks`。
+- [x] **步骤 2：** wiring 装配（`globalShortcut.register('Alt+Space', toggleSpotlight)`，失败仅日志）；`will-quit` 注销。
+- [x] **步骤 3：** 自测：构建后手按 Alt+Space 或 DAYFLOW_SHOT_JS 注入验证显隐；typecheck/test 全绿。
+- [x] **步骤 4：Commit** — `feat(todo): Spotlight 窗口与全局热键`
 
 ### 任务 3：Spotlight UI
 
 **文件：** 创建 `src/renderer/src/SpotlightWindow.tsx`；修改 `main.tsx`、`styles.css`、`preload/index.ts`
 
-- [ ] **步骤 1：** UI 结构照功能清单第三节：输入栏（命令芯片）、Active 区（FOCUS 卡+waiting 行）、Training chips、Bullet 任务树（Tab/Shift+Tab 保持焦点、◎、Timer 按钮、右键菜单）、过期提醒横幅、AI 卡、Footer 速查、Tasks Ready 弹层、完成确认（含 Select Project）、GPU 选择模式。
-- [ ] **步骤 2：** 键盘：↑↓/Ctrl+1..9/Enter/Esc/Tab/Shift+Tab/Backspace/Ctrl+Enter（Bullet 编辑器语义照语义规格 §4.3）。
-- [ ] **步骤 3：** 自测截图（DAYFLOW_SCREENSHOT 对 #/spotlight）；typecheck/test 全绿。
-- [ ] **步骤 4：Commit** — `feat(todo): Spotlight 界面（任务树/建议/横幅/弹层）`
+- [x] **步骤 1：** UI 结构照功能清单第三节：输入栏（命令芯片）、Active 区（FOCUS 卡+waiting 行）、Training chips、Bullet 任务树（Tab/Shift+Tab 保持焦点、◎、Timer 按钮、右键菜单）、过期提醒横幅、AI 卡、Footer 速查、Tasks Ready 弹层、完成确认（含 Select Project）、GPU 选择模式。
+- [x] **步骤 2：** 键盘：↑↓/Ctrl+1..9/Enter/Esc/Tab/Shift+Tab/Backspace/Ctrl+Enter（Bullet 编辑器语义照语义规格 §4.3）。
+- [x] **步骤 3：** 自测截图（DAYFLOW_SCREENSHOT 对 #/spotlight）；typecheck/test 全绿。
+- [x] **步骤 4：Commit** — `feat(todo): Spotlight 界面（任务树/建议/横幅/弹层）`
 
 ### 任务 4：收尾
 
-- [ ] **步骤 1：** AGENTS.md 现状更新；计划勾选；全量回归。
-- [ ] **步骤 2：Commit** — `docs(todo): P4 收尾`
+- [x] **步骤 1：** AGENTS.md 现状更新；计划勾选；全量回归。
+- [x] **步骤 2：Commit** — `docs(todo): P4 收尾`
 
 ---
 
