@@ -46,7 +46,7 @@
 
 **文件：** 创建 `src/main/todo/reminder-logic.ts`、`tests/todo/reminder-logic.test.ts`
 
-- [ ] **步骤 1：编写失败的测试**
+- [x] **步骤 1：编写失败的测试**
 
 ```ts
 describe('getTimerDisplay', () => {
@@ -60,16 +60,16 @@ describe('resolveReminderAction', () => {
 })
 ```
 
-- [ ] **步骤 2：运行验证失败**
-- [ ] **步骤 3：实现** `getTimerDisplay(task, now): string`（语义规格 §5.4）与 `resolveReminderAction(input: {key:'enter'|'esc'; taskType; hasProject; }): Action`（Action = `{kind:'complete'|'dismiss'|'stop-training'|'select-project'|'snooze'; minutes?: number}`）。
-- [ ] **步骤 4：运行验证通过**
-- [ ] **步骤 5：Commit** — `feat(todo): Reminder 动作语义与计时显示纯函数`
+- [x] **步骤 2：运行验证失败**
+- [x] **步骤 3：实现** `getTimerDisplay(task, now): string`（语义规格 §5.4）与 `resolveReminderAction(input: {key:'enter'|'esc'; taskType; hasProject; }): Action`（Action = `{kind:'complete'|'dismiss'|'stop-training'|'select-project'|'snooze'; minutes?: number}`）。
+- [x] **步骤 4：运行验证通过**
+- [x] **步骤 5：Commit** — `feat(todo): Reminder 动作语义与计时显示纯函数`
 
 ### 任务 2：IPC 注册面（纯注册函数）
 
 **文件：** 创建 `src/main/todo/ipc-registry.ts`、`tests/todo/ipc-registry.test.ts`
 
-- [ ] **步骤 1：编写失败的测试**（假 registry 收集 handle/on 注册）
+- [x] **步骤 1：编写失败的测试**（假 registry 收集 handle/on 注册）
 
 ```ts
 it('注册域齐全：tasks/timer/ai/gpu/settings/md(P4占位)/bridge 查询', () => { ... })
@@ -77,21 +77,21 @@ it('handle 转发到 domain 方法并回传（create-task/update-task/set-side-f
 it('timer:start-focus 带副焦点轮换：清目标 side 标志、旧 focus 降级为 side（满 2 静默跳过）', () => { ... })
 ```
 
-- [ ] **步骤 2：运行验证失败**
-- [ ] **步骤 3：实现** `registerTodoIpc(reg: {handle(ch, fn): void; on(ch, fn): void}, deps)`——通道清单照语义规格 §10（映射到 domain 方法），`timer:start-focus` 实现副焦点轮换（语义 §10 任务域注）。
-- [ ] **步骤 4：运行验证通过**
-- [ ] **步骤 5：Commit** — `feat(todo): IPC 注册面（含副焦点轮换）`
+- [x] **步骤 2：运行验证失败**
+- [x] **步骤 3：实现** `registerTodoIpc(reg: {handle(ch, fn): void; on(ch, fn): void}, deps)`——通道清单照语义规格 §10（映射到 domain 方法），`timer:start-focus` 实现副焦点轮换（语义 §10 任务域注）。
+- [x] **步骤 4：运行验证通过**
+- [x] **步骤 5：Commit** — `feat(todo): IPC 注册面（含副焦点轮换）`
 
 ### 任务 3：装配 + Reminder 窗
 
 **文件：** 创建 `src/main/todo/wiring.ts`、`src/main/todo/reminder-window.ts`；修改 `src/main/ipc.ts`、`src/main/index.ts`、`src/preload/index.ts`、renderer
 
-- [ ] **步骤 1：** `wiring.ts`：`createTodoRuntime()` 从 `db` 单例装配 `createTodoDomain`，broadcast → `BrowserWindow.getAllWindows()` 的 `webContents.send`（审查重点#2 防御）；`start()` 启 server(62222)+timerManager.start()；`stop()` 反向。reminder 窗口未 ready 的 send 进队列、ready 后 flush（审查重点#1）。
-- [ ] **步骤 2：** `reminder-window.ts`：`showReminderWindow(task)`（语义规格 §8 参数 + 居中光标显示器 + flashFrame + blur 100ms 重置顶 + 复用不重建）；软判定 `type==='reminder'` 不弹；`timer:ended` 路由在此（含 gpu-idle/notification 伪任务）。
-- [ ] **步骤 3：** renderer Reminder UI：`?win=reminder` 分支；大卡+Other Pending 列表+按钮组（COMPLETE/Continue/+5min/+30min、training 特例）+ Assign Project 内嵌 + 音效（三音琶音、5s 循环、清空即停，审查重点#5）+ 键盘（resolveReminderAction 驱动，审查重点#3/#4）。
-- [ ] **步骤 4：** preload 扩展 `window.dayflow.todo.*`（任务/计时/ai/gpu/设置键）。
-- [ ] **步骤 5：** 自测：`DAYFLOW_SCREENSHOT` 钩子对 reminder 窗截图核对；`npm test` + `npm run typecheck` 全绿。
-- [ ] **步骤 6：Commit** — `feat(todo): 装配/IPC 接线 + Reminder 硬提醒窗`
+- [x] **步骤 1：** `wiring.ts`：`createTodoRuntime()` 从 `db` 单例装配 `createTodoDomain`，broadcast → `BrowserWindow.getAllWindows()` 的 `webContents.send`（审查重点#2 防御）；`start()` 启 server(62222)+timerManager.start()；`stop()` 反向。reminder 窗口未 ready 的 send 进队列、ready 后 flush（审查重点#1）。
+- [x] **步骤 2：** `reminder-window.ts`：`showReminderWindow(task)`（语义规格 §8 参数 + 居中光标显示器 + flashFrame + blur 100ms 重置顶 + 复用不重建）；软判定 `type==='reminder'` 不弹；`timer:ended` 路由在此（含 gpu-idle/notification 伪任务）。
+- [x] **步骤 3：** renderer Reminder UI：`?win=reminder` 分支；大卡+Other Pending 列表+按钮组（COMPLETE/Continue/+5min/+30min、training 特例）+ Assign Project 内嵌 + 音效（三音琶音、5s 循环、清空即停，审查重点#5）+ 键盘（resolveReminderAction 驱动，审查重点#3/#4）。
+- [x] **步骤 4：** preload 扩展 `window.dayflow.todo.*`（任务/计时/ai/gpu/设置键）。
+- [x] **步骤 5：** 自测：`DAYFLOW_SCREENSHOT` 钩子对 reminder 窗截图核对；`npm test` + `npm run typecheck` 全绿。
+- [x] **步骤 6：Commit** — `feat(todo): 装配/IPC 接线 + Reminder 硬提醒窗`
 
 ---
 
