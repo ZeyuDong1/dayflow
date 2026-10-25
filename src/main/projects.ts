@@ -1,5 +1,16 @@
 import { db } from './db'
-import type { Project, Rule, RuleCondition, RuleNode, ProjectSuggestion, RuleSuggestionItem } from '../shared/types'
+import { dayStartTs, todayKey } from './paths'
+import type {
+  Project,
+  Rule,
+  RuleCondition,
+  RuleNode,
+  ProjectSuggestion,
+  RuleSuggestionItem,
+  ProjectStats,
+  ProjectsOverview,
+  ClassificationEntry
+} from '../shared/types'
 
 // ---------------------------------------------------------------------------
 // Default projects (created on first run)
@@ -409,4 +420,146 @@ function coarsePattern(title: string): string {
     .replace(/\s+/g, ' ')
     .trim()
   return clean.split(' ').slice(0, 4).join(' ') || clean.slice(0, 24)
+}
+
+// ---------------------------------------------------------------------------
+// Project management: merge / stats overview / learned classification maps
+// ---------------------------------------------------------------------------
+
+function isDescendant(projectId: number, maybeAncestor: number): boolean {
+  const all = listProjects()
+  let cur = all.find((p) => p.id === projectId)
+  while (cur && cur.parentId !== null) {
+    if (cur.parentId === maybeAncestor) return true
+    cur = all.find((p) => p.id === cur!.parentId)
+  }
+  return false
+}
+
+/** 合并项目：活动/任务/规则/归类映射/子项目全部移入目标项目，源项目删除。 */
+export function mergeProjects(sourceId: number, targetId: number): void {
+  if (sourceId === targetId) return
+  const source = listProjects().find((p) => p.id === sourceId)
+  if (!source) return
+  // 目标是源的后代时先把目标提为源的兄弟，避免父子成环。
+  if (isDescendant(targetId, sourceId)) {
+    db.run('UPDATE projects SET parent_id = ? WHERE id = ?', [source.parentId, targetId])
+  }
+  db.runMany([
+    { sql: 'UPDATE app_activities SET project_id = ? WHERE project_id = ?', params: [targetId, sourceId] },
+    { sql: 'UPDATE task_activities SET project_id = ? WHERE project_id = ?', params: [targetId, sourceId] },
+    { sql: 'UPDATE rules SET project_id = ? WHERE project_id = ?', params: [targetId, sourceId] },
+    { sql: 'UPDATE classifications SET project_id = ? WHERE project_id = ?', params: [targetId, sourceId] },
+    { sql: 'UPDATE projects SET parent_id = ? WHERE parent_id = ?', params: [targetId, sourceId] },
+    { sql: 'UPDATE projects SET is_deleted = 1 WHERE id = ?', params: [sourceId] }
+  ])
+}
+
+/** 项目管理页统计：今天 / 近 7 天 / 近 30 天时长 + 段数 + 头部应用。 */
+export function projectsOverview(): ProjectsOverview {
+  const todayStart = dayStartTs(todayKey())
+  const weekStart = todayStart - 6 * 86400_000
+  const monthStart = todayStart - 29 * 86400_000
+
+  const rangeMinutes = (since: number): Map<number | null, number> => {
+    const rows = db.all<{ project_id: number | null; ms: number }>(
+      `SELECT project_id, SUM(end_ts - start_ts) AS ms FROM app_activities
+       WHERE is_deleted = 0 AND start_ts >= ? GROUP BY project_id`,
+      [since]
+    )
+    const m = new Map<number | null, number>()
+    for (const r of rows) m.set(r.project_id, Math.round(r.ms / 60000))
+    const taskRows = db.all<{ project_id: number | null; ms: number }>(
+      `SELECT project_id, SUM(COALESCE(end_ts, ?) - start_ts) AS ms FROM task_activities
+       WHERE is_deleted = 0 AND start_ts >= ? GROUP BY project_id`,
+      [Date.now(), since]
+    )
+    for (const r of taskRows) m.set(r.project_id, (m.get(r.project_id) ?? 0) + Math.round(r.ms / 60000))
+    return m
+  }
+
+  const todayMap = rangeMinutes(todayStart)
+  const weekMap = rangeMinutes(weekStart)
+  const monthMap = rangeMinutes(monthStart)
+
+  const segRows = db.all<{ project_id: number | null; app_name: string; ms: number; segs: number }>(
+    `SELECT project_id, app_name, SUM(end_ts - start_ts) AS ms, COUNT(*) AS segs
+     FROM app_activities WHERE is_deleted = 0 AND start_ts >= ?
+     GROUP BY project_id, app_name`,
+    [monthStart]
+  )
+  const stats = new Map<number, ProjectStats>()
+  const ensure = (pid: number): ProjectStats => {
+    let s = stats.get(pid)
+    if (!s) {
+      s = { projectId: pid, todayMin: 0, weekMin: 0, monthMin: 0, segments: 0, topApps: [] }
+      stats.set(pid, s)
+    }
+    return s
+  }
+  const appMap = new Map<number, { app: string; minutes: number }[]>()
+  for (const r of segRows) {
+    if (r.project_id === null) continue
+    const s = ensure(r.project_id)
+    s.segments += r.segs
+    const list = appMap.get(r.project_id) ?? []
+    list.push({ app: r.app_name, minutes: Math.round(r.ms / 60000) })
+    appMap.set(r.project_id, list)
+  }
+  for (const [pid, s] of stats) {
+    s.todayMin = todayMap.get(pid) ?? 0
+    s.weekMin = weekMap.get(pid) ?? 0
+    s.monthMin = monthMap.get(pid) ?? 0
+    s.topApps = (appMap.get(pid) ?? []).sort((a, b) => b.minutes - a.minutes).slice(0, 5)
+  }
+
+  // 效率指数：近 30 天分钟数（子项目滚动到祖先）按 productivityScore 加权。
+  const projects = listProjects()
+  const rolled = new Map<number, number>()
+  for (const p of projects) rolled.set(p.id, monthMap.get(p.id) ?? 0)
+  const sorted = [...projects].sort((a, b) => a.listPosition - b.listPosition)
+  for (let pass = 0; pass < 5; pass++) {
+    for (const p of sorted) {
+      if (p.parentId !== null && rolled.has(p.parentId)) {
+        rolled.set(p.parentId, (rolled.get(p.parentId) ?? 0) + (rolled.get(p.id) ?? 0))
+      }
+    }
+  }
+  let scoredMs = 0
+  let weighted = 0
+  for (const p of projects) {
+    const ms = rolled.get(p.id) ?? 0
+    if (p.productivityScore !== 0 && ms > 0) {
+      scoredMs += ms
+      weighted += ms * p.productivityScore
+    }
+  }
+
+  return {
+    stats: [...stats.values()],
+    unclassifiedMin: {
+      today: todayMap.get(null) ?? 0,
+      week: weekMap.get(null) ?? 0,
+      month: monthMap.get(null) ?? 0
+    },
+    productivityIndex: scoredMs > 0 ? Math.round(weighted / scoredMs) : null
+  }
+}
+
+export function listClassifications(): ClassificationEntry[] {
+  return db
+    .all<{ app_name: string; title_pattern: string; project_id: number; hits: number; updated_at: number }>(
+      'SELECT * FROM classifications ORDER BY hits DESC, updated_at DESC'
+    )
+    .map((r) => ({
+      appName: r.app_name,
+      titlePattern: r.title_pattern,
+      projectId: r.project_id,
+      hits: r.hits,
+      updatedAt: r.updated_at
+    }))
+}
+
+export function deleteClassification(appName: string, titlePattern: string): void {
+  db.run('DELETE FROM classifications WHERE app_name = ? AND title_pattern = ?', [appName, titlePattern])
 }

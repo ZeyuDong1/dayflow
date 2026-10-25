@@ -4,10 +4,12 @@ import type {
   AppActivity,
   CaptureStatus,
   ChatConversation,
+  ClassificationEntry,
   ChatMessage,
   DayPlan,
   DeepPartial,
   Project,
+  ProjectsOverview,
   Rule,
   RuleCondition,
   RuleNode,
@@ -136,6 +138,13 @@ const api = {
   updateProject: (id: number, patch: Partial<Project>): Promise<Project[]> =>
     ipcRenderer.invoke('projects:update', id, patch),
   deleteProject: (id: number): Promise<Project[]> => ipcRenderer.invoke('projects:delete', id),
+  mergeProjects: (sourceId: number, targetId: number): Promise<Project[]> =>
+    ipcRenderer.invoke('projects:merge', sourceId, targetId),
+  getProjectsOverview: (): Promise<ProjectsOverview> => ipcRenderer.invoke('projects:overview'),
+  listClassifications: (): Promise<ClassificationEntry[]> =>
+    ipcRenderer.invoke('classifications:list'),
+  deleteClassification: (appName: string, titlePattern: string): Promise<boolean> =>
+    ipcRenderer.invoke('classifications:delete', appName, titlePattern),
 
   listRules: (): Promise<Rule[]> => ipcRenderer.invoke('rules:list'),
   createRule: (

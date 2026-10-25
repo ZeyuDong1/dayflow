@@ -14,6 +14,7 @@ import {
 import { startPipeline, stopPipeline, onCardsChanged } from './ai/analyze'
 import { startCleanupSchedule, stopCleanupSchedule } from './cleanup'
 import { registerIpc } from './ipc'
+import { installAppMenu } from './menu'
 import { updateTray, destroyTray } from './tray'
 import { startWindowTracking, stopWindowTracking } from './windows-poll'
 import { loadAppIcons } from './app-icons'
@@ -117,6 +118,7 @@ if (!gotLock) {
 
     mainWindow = createWindow()
     registerIpc(mainWindow)
+    installAppMenu(() => mainWindow)
 
     initPowerMonitoring()
     loadAppIcons()
@@ -158,6 +160,9 @@ if (!gotLock) {
     if (shotPath) {
       setTimeout(() => {
         if (!mainWindow || mainWindow.isDestroyed()) return
+        // 隐藏窗口里遮挡检测会彻底停帧（DOM 变更不被绘制，capturePage 抓旧帧），
+        // 自测前先显示窗口恢复产帧。
+        if (!mainWindow.isVisible()) mainWindow.show()
         const navIdx = Number(process.env.DAYFLOW_SHOT_NAV ?? '4')
         const extraJs = process.env.DAYFLOW_SHOT_JS ?? ''
         const clickNav = mainWindow.webContents
@@ -174,6 +179,13 @@ if (!gotLock) {
           .then(() => {
             console.log('[shot-title]', mainWindow?.getTitle())
             return undefined
+          })
+          // 隐藏窗口里合成器会停帧，DOM 变更不被绘制；强制重绘后再截，
+          // 否则 capturePage 抓到的是点击前的陈旧帧。
+          .then(() => {
+            if (!mainWindow || mainWindow.isDestroyed()) return null
+            mainWindow.webContents.invalidate()
+            return new Promise((resolve) => setTimeout(resolve, 500))
           })
           .then(() => (mainWindow && !mainWindow.isDestroyed() ? mainWindow.webContents.capturePage() : null))
           .then((img) => {

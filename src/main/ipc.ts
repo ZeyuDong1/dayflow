@@ -230,6 +230,16 @@ export function registerIpc(win: BrowserWindow): void {
     projectsMod.deleteProject(id)
     return projectsMod.listProjects()
   })
+  ipcMain.handle('projects:merge', (_e, sourceId: number, targetId: number) => {
+    projectsMod.mergeProjects(sourceId, targetId)
+    return projectsMod.listProjects()
+  })
+  ipcMain.handle('projects:overview', () => projectsMod.projectsOverview())
+  ipcMain.handle('classifications:list', () => projectsMod.listClassifications())
+  ipcMain.handle('classifications:delete', (_e, appName: string, titlePattern: string) => {
+    projectsMod.deleteClassification(appName, titlePattern)
+    return true
+  })
 
   ipcMain.handle('rules:list', () => projectsMod.listRules())
   ipcMain.handle('rules:create', (_e, projectId: number, conditions: RuleCondition[] | RuleNode) => {

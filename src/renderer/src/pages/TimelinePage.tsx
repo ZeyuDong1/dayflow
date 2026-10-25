@@ -921,6 +921,7 @@ export default function ActivitiesView({
               ›
             </button>
           </div>
+          <span className="tb-divider" />
           <input
             type="text"
             placeholder="搜索活动…"
@@ -928,13 +929,14 @@ export default function ActivitiesView({
             onChange={(e) => setQuery(e.target.value)}
             style={{ width: 170 }}
           />
+          <span className="tb-divider" />
           <div className="task-chip">
             <input
               type="text"
               placeholder="手动计时…"
               value={taskTitle}
               onChange={(e) => setTaskTitle(e.target.value)}
-              style={{ width: 110, padding: '4px 9px' }}
+              style={{ width: 110 }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && taskTitle.trim()) {
                   void window.dayflow.startTask(taskTitle.trim(), null, false).then(() => {

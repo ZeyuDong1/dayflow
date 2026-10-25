@@ -4,16 +4,18 @@ import DailyPage from './pages/DailyPage'
 import WeeklyPage from './pages/WeeklyPage'
 import ChatPage from './pages/ChatPage'
 import ReviewPage from './pages/ReviewPage'
+import ProjectsPage from './pages/ProjectsPage'
 import SettingsPage from './pages/SettingsPage'
 import { dragState } from './lib/drag'
 import { formatDuration } from './lib/format'
 import type { AppActivity, AppSettings, Project } from '@shared/types'
 
-type Nav = 'activities' | 'review' | 'daily' | 'weekly' | 'chat' | 'settings'
+type Nav = 'activities' | 'review' | 'projects' | 'daily' | 'weekly' | 'chat' | 'settings'
 
 const NAV: { id: Nav; label: string; icon: string }[] = [
   { id: 'activities', label: '活动', icon: '⏱' },
   { id: 'review', label: '整理', icon: '🧹' },
+  { id: 'projects', label: '项目管理', icon: '🗂' },
   { id: 'daily', label: '站会', icon: '☀' },
   { id: 'weekly', label: '统计', icon: '📊' },
   { id: 'chat', label: '对话', icon: '💬' },
@@ -314,6 +316,7 @@ export default function App(): React.ReactElement {
           />
         )}
         {nav === 'review' && <ReviewPage />}
+        {nav === 'projects' && <ProjectsPage onDataChanged={refresh} />}
         {nav === 'daily' && <DailyPage />}
         {nav === 'weekly' && <WeeklyPage />}
         {nav === 'chat' && <ChatPage />}

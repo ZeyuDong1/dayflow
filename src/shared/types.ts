@@ -337,6 +337,31 @@ export interface TaskActivity {
   running: boolean
 }
 
+/** 项目管理页：每项目的时长统计（不含子项目滚动，渲染层自行汇总）。 */
+export interface ProjectStats {
+  projectId: number
+  todayMin: number
+  weekMin: number
+  monthMin: number
+  segments: number // 近 30 天活动段数
+  topApps: { app: string; minutes: number }[] // 近 30 天，按占用排序
+}
+
+export interface ProjectsOverview {
+  stats: ProjectStats[]
+  unclassifiedMin: { today: number; week: number; month: number }
+  productivityIndex: number | null // 近 30 天加权效率指数
+}
+
+/** 学到的自动归类映射（手动归类 / LLM 判定的记忆）。 */
+export interface ClassificationEntry {
+  appName: string
+  titlePattern: string // '*' = 整个应用级别
+  projectId: number
+  hits: number
+  updatedAt: number
+}
+
 export interface ProjectSuggestion {
   appName: string
   titlePattern: string
