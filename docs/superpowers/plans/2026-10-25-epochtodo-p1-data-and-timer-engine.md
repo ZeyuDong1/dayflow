@@ -57,7 +57,7 @@
 - 修改：`package.json`、创建 `vitest.config.ts`
 - 创建：`src/main/todo/priority.ts`、`tests/todo/priority.test.ts`
 
-- [ ] **步骤 1：编写失败的测试**
+- [x] **步骤 1：编写失败的测试**
 
 ```ts
 // tests/todo/priority.test.ts
@@ -78,19 +78,19 @@ describe('computeBangPriorities', () => {
 })
 ```
 
-- [ ] **步骤 2：运行测试验证失败** — `npx vitest run tests/todo/priority.test.ts`，预期 FAIL（模块不存在）
-- [ ] **步骤 3：实现 `src/main/todo/priority.ts`**
+- [x] **步骤 2：运行测试验证失败** — `npx vitest run tests/todo/priority.test.ts`，预期 FAIL（模块不存在）
+- [x] **步骤 3：实现 `src/main/todo/priority.ts`**
 
 签名：`countBangs(title: string): number`；`computeBangPriorities(tasks: {id:number; title:string; parent_id:number|null}[]): Map<number, number>`。算法按语义规格 §6（memo 化递归、`visiting` 集防环、环上节点返回 0）。同时 `npm i -D vitest` 并写好 `vitest.config.ts`（Node 环境、include `tests/**/*.test.ts`）、`package.json` 加 `"test": "vitest run"`。
 
-- [ ] **步骤 4：运行测试验证通过** — `npx vitest run`，预期 PASS
-- [ ] **步骤 5：Commit** — `git add -A && git commit -m "feat(todo): vitest 骨架 + bang 优先级聚合"`
+- [x] **步骤 4：运行测试验证通过** — `npx vitest run`，预期 PASS
+- [x] **步骤 5：Commit** — `git add -A && git commit -m "feat(todo): vitest 骨架 + bang 优先级聚合"`
 
 ### 任务 2：层级（hierarchy.ts）
 
 **文件：** 创建 `src/main/todo/hierarchy.ts`、`tests/todo/hierarchy.test.ts`
 
-- [ ] **步骤 1：编写失败的测试**
+- [x] **步骤 1：编写失败的测试**
 
 ```ts
 describe('buildTaskTree', () => {
@@ -104,16 +104,16 @@ describe('getAncestorChain', () => {
 })
 ```
 
-- [ ] **步骤 2：运行验证失败**
-- [ ] **步骤 3：实现** — `buildTaskTree(tasks: TaskRow[]): TaskNode[]`（TaskNode = TaskRow & {depth, children}；过滤 `status!=='archived'`；parent 不在集合→根；排序键见语义规格 §6）；`getAncestorChain(tasks, taskId, maxDepth=5): TaskRow[]`（visited 防环）。
-- [ ] **步骤 4：运行验证通过**
-- [ ] **步骤 5：Commit** — `feat(todo): 任务树构建与祖先链（防环）`
+- [x] **步骤 2：运行验证失败**
+- [x] **步骤 3：实现** — `buildTaskTree(tasks: TaskRow[]): TaskNode[]`（TaskNode = TaskRow & {depth, children}；过滤 `status!=='archived'`；parent 不在集合→根；排序键见语义规格 §6）；`getAncestorChain(tasks, taskId, maxDepth=5): TaskRow[]`（visited 防环）。
+- [x] **步骤 4：运行验证通过**
+- [x] **步骤 5：Commit** — `feat(todo): 任务树构建与祖先链（防环）`
 
 ### 任务 3：Spotlight 命令解析（commands.ts）
 
 **文件：** 创建 `src/main/todo/commands.ts`、`tests/todo/commands.test.ts`
 
-- [ ] **步骤 1：编写失败的测试**（每条给输入→期望判别联合，取值照抄语义规格 §4.1）
+- [x] **步骤 1：编写失败的测试**（每条给输入→期望判别联合，取值照抄语义规格 §4.1）
 
 ```ts
 expect(parseCommand('')).toEqual({type:'EMPTY'})
@@ -129,16 +129,16 @@ expect(parseCommand('child:')).toEqual({type:'CREATE', main:'child', isSubtask:t
 // 另测：`#query` COMPLETE；`%x` TRAINING；@ 仅删第一个时间 token；`$ Project` 带空格
 ```
 
-- [ ] **步骤 2：运行验证失败**
-- [ ] **步骤 3：实现** `parseCommand(text: string): Command`——固定顺序：MEMO→前缀→子任务冒号→时间 `/@\s*(\d+)([smh]?)/i`（h×3600/s/其余×60）→项目 `/\$\s*([^\s!@%>]+)/`→GPU `` /`\s*([^\s!@%>$]+)/ ``（CREATE/FOCUS 升级 TRAINING）→main/sub 按首个 `!` 切→SUSPEND/REMINDER 推断。`Command` 判别联合在 `todo-types.ts`。
-- [ ] **步骤 4：运行验证通过**
-- [ ] **步骤 5：Commit** — `feat(todo): Spotlight 命令解析器`
+- [x] **步骤 2：运行验证失败**
+- [x] **步骤 3：实现** `parseCommand(text: string): Command`——固定顺序：MEMO→前缀→子任务冒号→时间 `/@\s*(\d+)([smh]?)/i`（h×3600/s/其余×60）→项目 `/\$\s*([^\s!@%>]+)/`→GPU `` /`\s*([^\s!@%>$]+)/ ``（CREATE/FOCUS 升级 TRAINING）→main/sub 按首个 `!` 切→SUSPEND/REMINDER 推断。`Command` 判别联合在 `todo-types.ts`。
+- [x] **步骤 4：运行验证通过**
+- [x] **步骤 5：Commit** — `feat(todo): Spotlight 命令解析器`
 
 ### 任务 4：schema 迁移 + TodoDB + todo 设置
 
 **文件：** 修改 `src/main/db.ts`；创建 `src/main/todo/db.ts`、`src/main/todo/settings.ts`、`tests/helpers/memdb.ts`、`tests/todo/schema-settings.test.ts`
 
-- [ ] **步骤 1：编写失败的测试**
+- [x] **步骤 1：编写失败的测试**
 
 ```ts
 describe('todo schema', () => {
@@ -152,20 +152,20 @@ describe('todo settings', () => {
 })
 ```
 
-- [ ] **步骤 2：运行验证失败**
-- [ ] **步骤 3：实现**
+- [x] **步骤 2：运行验证失败**
+- [x] **步骤 3：实现**
   - `db.ts` migrate() 追加（字段照语义规格 §1.2，**去掉 `dispatched_target`**，保留 `md_file_path/md_line_hash` 为 P4 预留）：`task_projects(id,name,color,created_at)`、`tasks(id,title,status,type,context_memo,total_duration,estimated_duration,tag,project_id,parent_id,is_next_action,is_side_focus,side_focus_at,sort_order,gpu_id,last_focused_at,created_at,is_webhook,md_file_path,md_line_hash)`、`timers(id,task_id,type,target_timestamp,original_duration,started_at)`、`history(id,task_id,title,type,start_time,end_time)`、`gpus(id,name,host_id,color,created_at,last_active_at)`。索引仅主键 + `timers.task_id` FK。
   - `todo/db.ts`：`export interface TodoDB { run(sql, params?): void; all<T>(sql, params?): T[]; get<T>(sql, params?): T | undefined }`。
   - `todo/settings.ts`：`TodoSettings`（键与默认值见测试）存 `app_settings` 的 `todo-settings` 键（JSON），`getTodoSettings(db)` 读时校验回退、`saveTodoSettings(db, patch)` 合并写。
   - `tests/helpers/memdb.ts`：`createMemDb(): TodoDB`——initSqlJs 内存库 + 执行与 db.ts 相同的建表 SQL（把 todo 域建表 SQL 提为 `TODO_SCHEMA_SQL` 常量导出，db.ts 与 memdb 共用）。
-- [ ] **步骤 4：运行验证通过**
-- [ ] **步骤 5：Commit** — `feat(todo): 域表 schema + TodoDB 接口 + 设置存取`
+- [x] **步骤 4：运行验证通过**
+- [x] **步骤 5：Commit** — `feat(todo): 域表 schema + TodoDB 接口 + 设置存取`
 
 ### 任务 5：TaskService 基础 CRUD
 
 **文件：** 创建 `src/main/todo/service.ts`、`tests/todo/service.test.ts`
 
-- [ ] **步骤 1：编写失败的测试**
+- [x] **步骤 1：编写失败的测试**
 
 ```ts
 describe('TaskService', () => {
@@ -178,16 +178,16 @@ describe('TaskService', () => {
 })
 ```
 
-- [ ] **步骤 2：运行验证失败**
-- [ ] **步骤 3：实现** `class TaskService { constructor(db: TodoDB) }`，方法与语义规格 §1.3 一致：`createTask(title, opts?)`、`getAllTasks()`、`getTask(id)`、`updateTask(id, updates)`、`appendMemo(id, text)`、`getSuggestions(maxMinutes?)`、`deleteTask(id)`、`deleteAllTasks()`。
-- [ ] **步骤 4：运行验证通过**
-- [ ] **步骤 5：Commit** — `feat(todo): TaskService 基础 CRUD 与去重`
+- [x] **步骤 2：运行验证失败**
+- [x] **步骤 3：实现** `class TaskService { constructor(db: TodoDB) }`，方法与语义规格 §1.3 一致：`createTask(title, opts?)`、`getAllTasks()`、`getTask(id)`、`updateTask(id, updates)`、`appendMemo(id, text)`、`getSuggestions(maxMinutes?)`、`deleteTask(id)`、`deleteAllTasks()`。
+- [x] **步骤 4：运行验证通过**
+- [x] **步骤 5：Commit** — `feat(todo): TaskService 基础 CRUD 与去重`
 
 ### 任务 6：副焦点（side focus）
 
 **文件：** 修改 `src/main/todo/service.ts`；测试 `tests/todo/service.test.ts` 追加
 
-- [ ] **步骤 1：编写失败的测试**
+- [x] **步骤 1：编写失败的测试**
 
 ```ts
 describe('side focus', () => {
@@ -197,16 +197,16 @@ describe('side focus', () => {
 })
 ```
 
-- [ ] **步骤 2：运行验证失败**
-- [ ] **步骤 3：实现** `setSideFocus(id, enabled): boolean`、`pickSideFocusPromotion(excludeId): number|null`（语义规格 §1.3/§2.4 排序键逐字）。
-- [ ] **步骤 4：运行验证通过**
-- [ ] **步骤 5：Commit** — `feat(todo): 副焦点槽位与晋升排序`
+- [x] **步骤 2：运行验证失败**
+- [x] **步骤 3：实现** `setSideFocus(id, enabled): boolean`、`pickSideFocusPromotion(excludeId): number|null`（语义规格 §1.3/§2.4 排序键逐字）。
+- [x] **步骤 4：运行验证通过**
+- [x] **步骤 5：Commit** — `feat(todo): 副焦点槽位与晋升排序`
 
 ### 任务 7：TimerManager —— focus 秒表
 
 **文件：** 创建 `src/main/todo/timer-manager.ts`、`tests/todo/timer-focus.test.ts`
 
-- [ ] **步骤 1：编写失败的测试**（注入 `now: () => number` 假时钟、`broadcast` 收集器）
+- [x] **步骤 1：编写失败的测试**（注入 `now: () => number` 假时钟、`broadcast` 收集器）
 
 ```ts
 describe('focus', () => {
@@ -218,16 +218,16 @@ describe('focus', () => {
 })
 ```
 
-- [ ] **步骤 2：运行验证失败**
-- [ ] **步骤 3：实现** `class TimerManager` 构造注入 `{db, tasks: TaskService, gpus: GpuService, getSettings: () => TodoSettings, broadcast, now, setTimeoutFn, clearTimeoutFn}`。实现 `startFocus/settleFocusTimer/stopFocus`（语义规格 §2.3 全部规则）。
-- [ ] **步骤 4：运行验证通过**
-- [ ] **步骤 5：Commit** — `feat(todo): 计时引擎 focus 秒表（180s 记账门槛）`
+- [x] **步骤 2：运行验证失败**
+- [x] **步骤 3：实现** `class TimerManager` 构造注入 `{db, tasks: TaskService, gpus: GpuService, getSettings: () => TodoSettings, broadcast, now, setTimeoutFn, clearTimeoutFn}`。实现 `startFocus/settleFocusTimer/stopFocus`（语义规格 §2.3 全部规则）。
+- [x] **步骤 4：运行验证通过**
+- [x] **步骤 5：Commit** — `feat(todo): 计时引擎 focus 秒表（180s 记账门槛）`
 
 ### 任务 8：TimerManager —— wait/training 与到期分流
 
 **文件：** 修改 `timer-manager.ts`；测试 `tests/todo/timer-wait.test.ts`
 
-- [ ] **步骤 1：编写失败的测试**
+- [x] **步骤 1：编写失败的测试**
 
 ```ts
 describe('wait/training', () => {
@@ -241,32 +241,32 @@ describe('wait/training', () => {
 })
 ```
 
-- [ ] **步骤 2：运行验证失败**
-- [ ] **步骤 3：实现** `startWait/cancelWait/snoozeTrainingReminder/startTraining/pauseTraining/stopTraining/handleTimerExpiration/cancelAll`（语义规格 §2.4/§2.5/§2.9；跟进任务标题逐字 `Process {原标题}`）。
-- [ ] **步骤 4：运行验证通过**
-- [ ] **步骤 5：Commit** — `feat(todo): 计时引擎 wait/training 与到期分流`
+- [x] **步骤 2：运行验证失败**
+- [x] **步骤 3：实现** `startWait/cancelWait/snoozeTrainingReminder/startTraining/pauseTraining/stopTraining/handleTimerExpiration/cancelAll`（语义规格 §2.4/§2.5/§2.9；跟进任务标题逐字 `Process {原标题}`）。
+- [x] **步骤 4：运行验证通过**
+- [x] **步骤 5：Commit** — `feat(todo): 计时引擎 wait/training 与到期分流`
 
 ### 任务 9：completeTask 编排
 
 **文件：** 修改 `timer-manager.ts` + `service.ts`；测试 `tests/todo/timer-complete.test.ts`
 
-- [ ] **步骤 1：编写失败的测试**
+- [x] **步骤 1：编写失败的测试**
 
 ```ts
 it('完成中任务：有父→startFocus(父)；无父→stopFocus', () => { ... })
 it('级联归档自身+未归档后代（BFS 上限 20 层防环）并清其 timers/timeout', () => { ... })
 ```
 
-- [ ] **步骤 2：运行验证失败**
-- [ ] **步骤 3：实现** `TimerManager.completeTask(id)`（语义规格 §2.6）；`TaskService.completeSubtree(id): number[]`（归档集合，防环）。
-- [ ] **步骤 4：运行验证通过**
-- [ ] **步骤 5：Commit** — `feat(todo): 完成任务焦点移交与级联归档`
+- [x] **步骤 2：运行验证失败**
+- [x] **步骤 3：实现** `TimerManager.completeTask(id)`（语义规格 §2.6）；`TaskService.completeSubtree(id): number[]`（归档集合，防环）。
+- [x] **步骤 4：运行验证通过**
+- [x] **步骤 5：Commit** — `feat(todo): 完成任务焦点移交与级联归档`
 
 ### 任务 10：nagging 与 GPU 健康检查
 
 **文件：** 修改 `timer-manager.ts`；测试 `tests/todo/health.test.ts`
 
-- [ ] **步骤 1：编写失败的测试**
+- [x] **步骤 1：编写失败的测试**
 
 ```ts
 describe('checkTaskNagging', () => {
@@ -281,19 +281,19 @@ describe('checkGpuHealth', () => {
 it('reconcileStaleTraining：3 分钟宽限后归档无遥测 active training 并释放 GPU', () => { ... })
 ```
 
-- [ ] **步骤 2：运行验证失败**
-- [ ] **步骤 3：实现** `start()/stop()`（60s `setInterval` 两个检查）、`checkTaskNagging/checkGpuHealth/reconcileStaleTraining`（语义规格 §2.7/§2.8；停滞阈值/间隔/空闲间隔读 `TodoSettings` 分钟值）。合成事件标题逐字 `⚠️ 训练停滞: {模型名}`、`GPU 空闲 · N 个 GPU 上有 M 个训练任务排队`。
-- [ ] **步骤 4：运行验证通过**
-- [ ] **步骤 5：Commit** — `feat(todo): nagging 与 GPU 健康检查`
+- [x] **步骤 2：运行验证失败**
+- [x] **步骤 3：实现** `start()/stop()`（60s `setInterval` 两个检查）、`checkTaskNagging/checkGpuHealth/reconcileStaleTraining`（语义规格 §2.7/§2.8；停滞阈值/间隔/空闲间隔读 `TodoSettings` 分钟值）。合成事件标题逐字 `⚠️ 训练停滞: {模型名}`、`GPU 空闲 · N 个 GPU 上有 M 个训练任务排队`。
+- [x] **步骤 4：运行验证通过**
+- [x] **步骤 5：Commit** — `feat(todo): nagging 与 GPU 健康检查`
 
 ### 任务 11：组合导出 + 文档 + 全量回归
 
 **文件：** 创建 `src/main/todo/index.ts`；修改 `AGENTS.md`
 
-- [ ] **步骤 1：实现 `index.ts`**：`createTodoDomain(db: TodoDB, opts)` 返回 `{tasks, gpus, timerManager, getSettings}`，一行装配（无新逻辑）。
-- [ ] **步骤 2：AGENTS.md 增补**：todo 域模块表、测试命令（`npm test`）、"新增 todo 逻辑必须配纯逻辑测试"约定、P1 已知边界（UI/IPC 未接线，P2 起）。
-- [ ] **步骤 3：全量回归**：`npm test` 全绿 + `npm run typecheck` 通过。
-- [ ] **步骤 4：Commit** — `feat(todo): 组合导出与文档（P1 收尾）`
+- [x] **步骤 1：实现 `index.ts`**：`createTodoDomain(db: TodoDB, opts)` 返回 `{tasks, gpus, timerManager, getSettings}`，一行装配（无新逻辑）。
+- [x] **步骤 2：AGENTS.md 增补**：todo 域模块表、测试命令（`npm test`）、"新增 todo 逻辑必须配纯逻辑测试"约定、P1 已知边界（UI/IPC 未接线，P2 起）。
+- [x] **步骤 3：全量回归**：`npm test` 全绿 + `npm run typecheck` 通过。
+- [x] **步骤 4：Commit** — `feat(todo): 组合导出与文档（P1 收尾）`
 
 ---
 
