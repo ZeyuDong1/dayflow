@@ -8,7 +8,7 @@ interface Expanded extends Record<number, CardScreenshot[]> {}
 
 const PROJECT_COLORS = ['#e8763a', '#4a5fd9', '#2fa47a', '#c79be8', '#f08a6a', '#7ba8e8', '#4fd1b5', '#d4a843', '#e05252', '#6f665a']
 
-/** 项目树（Timing：无限层级 + 颜色 + 拖放目标）。 */
+/** 类型树（Timing：无限层级 + 颜色 + 拖放目标）。 */
 function ProjectTree({
   projects,
   activities,
@@ -548,7 +548,9 @@ function TimingAxis({
   onSelect,
   selected,
   onAddManual,
-  icons
+  icons,
+  sessions,
+  ratios
 }: {
   activities: AppActivity[]
   tasks: TaskActivity[]
@@ -560,10 +562,13 @@ function TimingAxis({
   selected: AppActivity | null
   onAddManual: (minute: number) => void
   icons?: Record<string, string>
+  sessions: { id: number; taskId: number | null; title: string; startTs: number; endTs: number; color: string }[]
+  ratios: Record<number, number | null>
 }): React.ReactElement {
   const trackRef = React.useRef<HTMLDivElement>(null)
   const [ppm, setPpm] = useState(1.15)
   const [tip, setTip] = useState<TipState | null>(null)
+  const [sessionTip, setSessionTip] = useState<{ s: { id: number; title: string; startTs: number; endTs: number }; x: number; y: number } | null>(null)
   const nowTs = Date.now()
 
   const d = parseDayKey(day)
@@ -640,6 +645,45 @@ function TimingAxis({
       >
         <div className="ta-canvas" style={{ height: totalH }}>
           {hours}
+          {/* 任务窄条（用户裁决）：右侧窄列，色块=专注会话，填充高度=合规比例，点击看详情 */}
+          <div className="ta-task-strip" title="任务窄条：点击色块看会话详情">
+            {sessions.map((sess) => {
+              const top = yOf(sess.startTs)
+              const hh = Math.max(((sess.endTs - sess.startTs) / 60000) * ppm - 3, 2)
+              const ratio = ratios[sess.id]
+              return (
+                <div
+                  key={sess.id}
+                  className="ta-task-block"
+                  style={{ top, height: hh, background: sess.color }}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setSessionTip({ s: sess, x: e.clientX, y: e.clientY })
+                  }}
+                >
+                  {ratio != null && ratio > 0 && (
+                    <div className="ta-task-fill" style={{ height: Math.round(ratio * 100) + '%' }} />
+                  )}
+                </div>
+              )
+            })}
+          </div>
+          {sessionTip && (
+            <div className="ta-session-pop" style={{ left: sessionTip.x + 12, top: sessionTip.y }} onClick={() => setSessionTip(null)}>
+              <div className="ta-session-title">{sessionTip.s.title}</div>
+              <div>
+                {clockFromTs(sessionTip.s.startTs)} – {clockFromTs(sessionTip.s.endTs)}（
+                {Math.round((sessionTip.s.endTs - sessionTip.s.startTs) / 60000)} 分钟）
+              </div>
+              <div>
+                合规比例：
+                {ratios[sessionTip.s.id] == null
+                  ? '未分析'
+                  : Math.round((ratios[sessionTip.s.id] as number) * 100) + '%（截图判定在做任务）'}
+              </div>
+              <div className="ta-session-hint">点击关闭</div>
+            </div>
+          )}
           {bands.map((b) => {
             const color = colorOf(b.projectId)
             const proj = projects.find((p) => p.id === b.projectId)
@@ -809,6 +853,8 @@ export default function ActivitiesView({
   const [lightbox, setLightbox] = useState<string | null>(null)
   const [taskTitle, setTaskTitle] = useState('')
   const [appIcons, setAppIcons] = useState<Record<string, string>>({})
+  const [focusSessions, setFocusSessions] = useState<{ id: number; taskId: number | null; title: string; startTs: number; endTs: number; color: string }[]>([])
+  const [sessionRatios, setSessionRatios] = useState<Record<number, number | null>>({})
 
   const projectColor = (id: number | null): string =>
     projects.find((p) => p.id === id)?.color ?? '#b0a794'
@@ -824,6 +870,17 @@ export default function ActivitiesView({
     const [y, m, dd] = day.split('-').map(Number)
     const ds = new Date(y, m - 1, dd, 4, 0, 0, 0).getTime()
     void window.dayflow.listTasks(ds, ds + 86400_000).then(setDayTasks)
+    void window.dayflow.todo
+      .focusSessions(day)
+      .then((rows) => {
+        setFocusSessions(rows as never)
+        return window.dayflow.todo.sessionAnalyses(day)
+      })
+      .then((rows) => {
+        const map: Record<number, number | null> = {}
+        for (const r of rows as { historyId: number; ratio: number | null }[]) map[r.historyId] = r.ratio
+        setSessionRatios(map)
+      })
   }, [day])
 
   useEffect(() => {
@@ -833,6 +890,20 @@ export default function ActivitiesView({
       onDataChanged()
     })
   }, [load, onDataChanged])
+
+  // 任务窄条合规比例：进入当日惰性分析一次（结果缓存入库，judge 失败静默）
+  useEffect(() => {
+    if (!day) return
+    void window.dayflow.todo
+      .analyzeDay(day)
+      .then(() => window.dayflow.todo.sessionAnalyses(day))
+      .then((rows) => {
+        const map: Record<number, number | null> = {}
+        for (const r of rows as { historyId: number; ratio: number | null }[]) map[r.historyId] = r.ratio
+        setSessionRatios(map)
+      })
+      .catch(() => {})
+  }, [day])
 
   // 应用真实图标（exe 提取，主进程缓存）
   useEffect(() => {
@@ -1139,6 +1210,8 @@ export default function ActivitiesView({
           onSelect={setSelectedActivity}
           selected={selectedActivity}
           onAddManual={(minute) => setManualDraft({ minute, title: '', dur: 30 })}
+          sessions={focusSessions}
+          ratios={sessionRatios}
         />
         {selectedActivity && (
           <div className="panel ta-detail">

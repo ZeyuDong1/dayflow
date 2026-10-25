@@ -303,12 +303,20 @@ const api = {
     getGpus: (): Promise<(import('../shared/todo-types').GpuRow & { activeTaskId: number | null })[]> =>
       ipcRenderer.invoke('todo:get-gpus'),
     getSettings: (): Promise<unknown> => ipcRenderer.invoke('todo:get-settings'),
+    updateSettings: (patch: Record<string, unknown>): Promise<unknown> =>
+      ipcRenderer.invoke('todo:update-settings', patch),
     setOverlayIgnoreMouse: (ignore: boolean): void => {
       ipcRenderer.send('todo:set-overlay-ignore-mouse', ignore)
     },
     resetOverlayPosition: (): void => {
       ipcRenderer.send('todo:reset-overlay-position')
     },
+    focusSessions: (
+      day: string,
+    ): Promise<{ id: number; taskId: number | null; title: string; startTs: number; endTs: number }[]> =>
+      ipcRenderer.invoke('todo:focus-sessions', day),
+    sessionAnalyses: (day: string): Promise<unknown[]> => ipcRenderer.invoke('todo:session-analyses', day),
+    analyzeDay: (day: string): Promise<number> => ipcRenderer.invoke('todo:analyze-day', day),
     execCommand: (
       parsed: import('../shared/commands').ParsedCommand,
       ctx: { activeTaskId?: number | null; highlightedId?: number | null; suggestionIds?: number[] },
@@ -322,6 +330,12 @@ const api = {
       ipcRenderer.invoke('todo:list-task-projects'),
     createTaskProject: (name: string, color?: string): Promise<import('../shared/todo-types').TaskProject> =>
       ipcRenderer.invoke('todo:create-task-project', name, color),
+    updateTaskProject: (
+      id: number,
+      updates: { name?: string; color?: string | null },
+    ): Promise<import('../shared/todo-types').TaskProject | null> =>
+      ipcRenderer.invoke('todo:update-task-project', id, updates),
+    deleteTaskProject: (id: number): Promise<boolean> => ipcRenderer.invoke('todo:delete-task-project', id),
     onEvent: (cb: (event: import('../shared/todo-types').TodoEvent) => void): (() => void) => {
       const listener = (_e: unknown, event: import('../shared/todo-types').TodoEvent): void => cb(event)
       ipcRenderer.on('todo:event', listener)

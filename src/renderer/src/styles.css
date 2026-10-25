@@ -3396,3 +3396,26 @@ input[type='range']::-webkit-slider-thumb:active {
 @media (prefers-reduced-motion: reduce) {
   .ow-glow, .ow-overdue, .ow-marquee-track { animation: none !important; }
 }
+
+/* ===== 时间轴任务窄条（用户裁决：右侧窄列 + 合规填充） ===== */
+.ta-task-strip {
+  position: absolute; top: 0; right: 1px; width: 16px; height: 100%;
+  z-index: 5; pointer-events: none;
+}
+.ta-task-block {
+  position: absolute; left: 0; right: 0; border-radius: 3px; cursor: pointer;
+  overflow: hidden; opacity: 0.85; pointer-events: auto; min-height: 2px;
+}
+.ta-task-block:hover { opacity: 1; outline: 1px solid var(--accent); }
+.ta-task-fill {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  background: rgba(255, 255, 255, 0.42);
+}
+.ta-session-pop {
+  position: fixed; z-index: 300; min-width: 200px; max-width: 280px;
+  background: var(--card); border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-pop); padding: 10px 12px; font-size: 12px; color: var(--text);
+  display: flex; flex-direction: column; gap: 4px;
+}
+.ta-session-title { font-weight: 600; font-size: 13px; word-break: break-word; }
+.ta-session-hint { color: var(--text-faint); font-size: 11px; }

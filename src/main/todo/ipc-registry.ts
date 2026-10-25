@@ -33,6 +33,9 @@ export interface TodoIpcDeps {
   hideSpotlight?: () => void
   setOverlayIgnoreMouse?: (ignore: boolean) => void
   resetOverlayPosition?: () => void
+  focusSessions?: (day: string) => { id: number; taskId: number | null; title: string; startTs: number; endTs: number }[]
+  sessionAnalyses?: (day: string) => unknown[]
+  analyzeDay?: (day: string) => Promise<number>
 }
 
 /** timer:start-focus 的副焦点轮换：清目标 side 标志；旧焦点非自身则尝试降级为副（满 2 静默跳过）。 */
@@ -103,6 +106,12 @@ export function registerTodoIpc(reg: IpcRegistry, deps: TodoIpcDeps): void {
   reg.handle('todo:list-task-projects', (() => tasks.listTaskProjects()) as never)
   reg.handle('todo:create-task-project', ((_e: never, name: string, color?: string) =>
     tasks.createTaskProject(name, color)) as never)
+  reg.handle('todo:update-task-project', ((_e: never, id: number, updates: { name?: string; color?: string | null }) =>
+    tasks.updateTaskProject(id, updates)) as never)
+  reg.handle('todo:delete-task-project', ((_e: never, id: number) => {
+    tasks.deleteTaskProject(id)
+    return true
+  }) as never)
 
   // AI 域
   reg.handle('todo:ai-promote', ((_e: never, source: string, title: string, detail?: string, link?: string) =>
@@ -133,6 +142,11 @@ export function registerTodoIpc(reg: IpcRegistry, deps: TodoIpcDeps): void {
   reg.on('todo:set-overlay-ignore-mouse', ((_e: never, ignore: boolean) =>
     deps.setOverlayIgnoreMouse?.(ignore)) as never)
   reg.on('todo:reset-overlay-position', (() => deps.resetOverlayPosition?.()) as never)
+
+  // 时间轴窄条：专注会话 + 合规分析
+  reg.handle('todo:focus-sessions', ((_e: never, day: string) => deps.focusSessions?.(day) ?? []) as never)
+  reg.handle('todo:session-analyses', ((_e: never, day: string) => deps.sessionAnalyses?.(day) ?? []) as never)
+  reg.handle('todo:analyze-day', ((_e: never, day: string) => deps.analyzeDay?.(day) ?? Promise.resolve(0)) as never)
   reg.on('todo:reminder-snooze', ((_e: never, taskId: number, minutes: number) => {
     timerManager.snoozeTrainingReminder(taskId, minutes)
     deps.hideReminder?.()

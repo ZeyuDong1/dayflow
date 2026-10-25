@@ -15,7 +15,7 @@ type Nav = 'activities' | 'review' | 'projects' | 'daily' | 'weekly' | 'chat' | 
 const NAV: { id: Nav; label: string; icon: string }[] = [
   { id: 'activities', label: '活动', icon: '⏱' },
   { id: 'review', label: '整理', icon: '🧹' },
-  { id: 'projects', label: '项目管理', icon: '🗂' },
+  { id: 'projects', label: '类型树', icon: '🗂' },
   { id: 'daily', label: '站会', icon: '☀' },
   { id: 'weekly', label: '统计', icon: '📊' },
   { id: 'chat', label: '对话', icon: '💬' },
@@ -69,7 +69,7 @@ function Onboarding({ onDone }: { onDone: () => void }): React.ReactElement {
             <h2>欢迎使用 Dayflow</h2>
             <p className="modal-sub">
               自动工作日志：每 2 秒记录前台窗口（行为判定的主要依据），配合屏幕快照做视觉补充，AI
-              生成时间线并自动归入项目。左侧是你的项目树（可拖拽活动归类），中间是活动明细，右侧是全局时间轴。
+              生成时间线并自动归入类型。左侧是你的类型树（可拖拽活动归类），中间是活动明细，右侧是全局时间轴。
             </p>
             <div className="modal-actions">
               <button className="btn primary" onClick={() => setStep(1)}>
@@ -202,7 +202,7 @@ export default function App(): React.ReactElement {
 
   return (
     <div className="app">
-      {/* ---------- 左侧边栏（Timing 式：导航 + 项目树带时长） ---------- */}
+      {/* ---------- 左侧边栏（Timing 式：导航 + 类型树带时长） ---------- */}
       <aside className="sidebar">
         <div className="brand">
           <div className="brand-logo">D</div>

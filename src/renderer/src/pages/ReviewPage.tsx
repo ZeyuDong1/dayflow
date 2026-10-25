@@ -92,7 +92,7 @@ export default function ReviewPage(): React.ReactElement {
 
   const quickAssign = (g: RuleSuggestionItem, projectId: number): void => {
     void window.dayflow.bulkAssign(g.appName, g.titlePattern, projectId).then((n) => {
-      setStatus(`已把 ${n} 段「${g.appName}」活动归入项目`)
+      setStatus(`已把 ${n} 段「${g.appName}」活动归入类型`)
       load()
     })
   }
@@ -122,7 +122,7 @@ export default function ReviewPage(): React.ReactElement {
         <div>
           <h1 className="page-title">整理</h1>
           <div className="page-subtitle">
-            未归类时间批量归位；规则支持 AND / OR / NOT 任意嵌套（Timing 谓词树），归入项目树任意层级
+            未归类时间批量归位；规则支持 AND / OR / NOT 任意嵌套（Timing 谓词树），归入类型树任意层级
           </div>
         </div>
         <div className="header-actions">
@@ -187,7 +187,7 @@ export default function ReviewPage(): React.ReactElement {
                   }}
                   style={{ maxWidth: 170 }}
                 >
-                  <option value="">归入项目…</option>
+                  <option value="">归入类型…</option>
                   {flatProjects().map(({ p, depth }) => (
                     <option key={p.id} value={p.id}>
                       {'　'.repeat(depth)}
@@ -211,7 +211,7 @@ export default function ReviewPage(): React.ReactElement {
       {draft && (
         <div className="panel" style={{ borderColor: 'var(--accent)' }}>
           <div className="panel-title">
-            构建规则（当满足以下条件时 → 归入项目）
+            构建规则（当满足以下条件时 → 归入类型）
             <button className="btn small ghost" onClick={() => setDraft(null)}>
               取消
             </button>
@@ -273,7 +273,7 @@ export default function ReviewPage(): React.ReactElement {
               }}
               style={{ maxWidth: 160 }}
             >
-              <option value="">归入项目…</option>
+              <option value="">归入类型…</option>
               {flatProjects().map(({ p, depth }) => (
                 <option key={p.id} value={p.id}>
                   {'　'.repeat(depth)}

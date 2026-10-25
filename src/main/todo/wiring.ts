@@ -27,6 +27,14 @@ import {
   setBoundsPersister,
 } from './overlay-window'
 import { cleanupDraftTasks } from '../../shared/execute-command'
+import {
+  COMPLIANCE_SCHEMA_SQL,
+  analyzeSession,
+  listAnalyses,
+  getAnalysis,
+  type SessionSample,
+} from './compliance'
+import { createLlmJudge } from './compliance-judge'
 
 export interface TodoRuntime {
   tasks: TaskService
@@ -93,6 +101,9 @@ export function createTodoRuntime(opts: { port?: number } = {}): TodoRuntime {
     hideSpotlight: () => hideSpotlight(),
     setOverlayIgnoreMouse: (ignore: boolean) => setOverlayIgnoreMouse(ignore),
     resetOverlayPosition: () => resetOverlayPosition(),
+    focusSessions,
+    sessionAnalyses,
+    analyzeDay,
   }
   setDraftCleanup(() => {
     cleanupDraftTasks(tasks.getAllTasks(), (id) => tasks.deleteTask(id))
@@ -100,6 +111,43 @@ export function createTodoRuntime(opts: { port?: number } = {}): TodoRuntime {
   setBoundsPersister((b) => {
     saveTodoSettings(db, { overlay_bounds: b })
   })
+
+  // 会话合规分析（功能清单 §九：时间轴窄条 + AI 截图合规比例）
+  ;(db as unknown as { exec(sql: string): void }).exec(COMPLIANCE_SCHEMA_SQL)
+  const judge = createLlmJudge()
+  function focusSessions(day: string) {
+    return db
+      .all<{ id: number; task_id: number | null; title: string; start_time: string; end_time: string }>(
+        "SELECT id, task_id, title, start_time, end_time FROM history WHERE type = 'focus' AND start_time LIKE ? ORDER BY start_time ASC",
+        [`${day}%`],
+      )
+      .map((r) => ({
+        id: r.id,
+        taskId: r.task_id,
+        title: r.title,
+        startTs: Date.parse(r.start_time),
+        endTs: Date.parse(r.end_time),
+      }))
+  }
+  function sessionAnalyses(day: string) { return listAnalyses(db, day) }
+  async function analyzeDay(day: string): Promise<number> {
+    let n = 0
+    for (const s of focusSessions(day)) {
+      if (getAnalysis(db, s.id)) continue
+      const samples: SessionSample[] = db
+        .all<{ captured_at: number; file_path: string }>(
+          'SELECT captured_at, file_path FROM screenshots WHERE is_deleted = 0 AND captured_at >= ? AND captured_at <= ? ORDER BY captured_at ASC',
+          [s.startTs, s.endTs],
+        )
+        .map((r) => ({ capturedAt: r.captured_at, filePath: r.file_path }))
+      await analyzeSession(
+        { db, judge, now: Date.now },
+        { historyId: s.id, taskTitle: s.title, startTs: s.startTs, endTs: s.endTs, samples },
+      )
+      n++
+    }
+    return n
+  }
   registerTodoIpc(
     {
       handle: (ch, fn) => ipcMain.handle(ch, fn as never),

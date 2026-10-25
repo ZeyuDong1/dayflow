@@ -224,7 +224,7 @@ export default function WeeklyPage(): React.ReactElement {
                 <span style={{ fontSize: 12, color: 'var(--text-faint)', fontWeight: 400 }}>
                   {projStats.productivityIndex !== null
                     ? `效率指数 ${projStats.productivityIndex}（按项目效率分加权）`
-                    : '在项目树上设置效率分后可计算效率指数'}
+                    : '在类型树上设置效率分后可计算效率指数'}
                 </span>
                 <button
                   className="btn small"

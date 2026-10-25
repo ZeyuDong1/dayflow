@@ -163,6 +163,29 @@ export class TaskService {
     ])!
   }
 
+  updateTaskProject(id: number, updates: { name?: string; color?: string | null }): TaskProject | null {
+    const sets: string[] = []
+    const params: unknown[] = []
+    if (updates.name !== undefined) {
+      sets.push('name = ?')
+      params.push(updates.name)
+    }
+    if (updates.color !== undefined) {
+      sets.push('color = ?')
+      params.push(updates.color)
+    }
+    if (sets.length > 0) {
+      params.push(id)
+      this.db.run(`UPDATE task_projects SET ${sets.join(', ')} WHERE id = ?`, params)
+    }
+    return this.db.get<TaskProject>('SELECT * FROM task_projects WHERE id = ?', [id]) ?? null
+  }
+
+  deleteTaskProject(id: number): void {
+    this.db.run('UPDATE tasks SET project_id = NULL WHERE project_id = ?', [id])
+    this.db.run('DELETE FROM task_projects WHERE id = ?', [id])
+  }
+
   /** 完成：自身+全部未归档后代批量归档（BFS，深度上限 20 防环），返回归档 id 列表。 */
   completeSubtree(id: number): number[] {
     const collected: number[] = []

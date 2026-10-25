@@ -255,9 +255,9 @@ export default function ProjectsPage({ onDataChanged }: Props): React.ReactEleme
     <div className="page">
       <div className="page-header">
         <div>
-          <h1 className="page-title">项目管理</h1>
+          <h1 className="page-title">类型树</h1>
           <div className="page-subtitle">
-            无限层级项目树 · 颜色 / 效率分 / 可计费 · 自动归类规则与学习映射 · 合并与统计
+            无限层级类型树 · 颜色 / 效率分 / 可计费 · 自动归类规则与学习映射 · 合并与统计
           </div>
         </div>
         <div className="header-actions">
@@ -313,7 +313,7 @@ export default function ProjectsPage({ onDataChanged }: Props): React.ReactEleme
       )}
 
       <div className="pm-layout">
-        {/* ---------- 左：项目树 ---------- */}
+        {/* ---------- 左：类型树 ---------- */}
         <div className="panel pm-tree">
           <div
             className={`pm-row pm-overview-row ${selected === 'overview' ? 'active' : ''}`}

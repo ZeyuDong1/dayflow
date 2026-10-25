@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import type { AppSettings, DeepPartial, ProviderId, Project, StorageUsage } from '@shared/types'
+import TodoSettingsPanel from './TodoSettingsPanel'
 import { addDays, formatBytes } from '../lib/format'
 
 const PROVIDERS: { id: ProviderId; name: string; desc: string; needsKey: boolean; vision: string }[] = [
@@ -24,7 +25,7 @@ const ROLES = [
   'Other'
 ]
 
-type Tab = 'ai' | 'tutor' | 'recording' | 'storage' | 'data' | 'general'
+type Tab = 'ai' | 'tutor' | 'recording' | 'storage' | 'data' | 'general' | 'todo'
 
 function mergeDeep<T>(base: T, patch: DeepPartial<T> | Partial<T>): T {
   const out: Record<string, unknown> = { ...(base as Record<string, unknown>) }
@@ -206,6 +207,7 @@ export default function SettingsPage({ onSaved }: { onSaved: () => void }): Reac
             ['recording', '录制'],
                   ['storage', '存储'],
             ['data', '数据'],
+            ['todo', '任务'],
             ['general', '通用']
           ] as [Tab, string][]
         ).map(([id, label]) => (
@@ -1042,6 +1044,8 @@ export default function SettingsPage({ onSaved }: { onSaved: () => void }): Reac
           </div>
         </>
       )}
+
+      {tab === 'todo' && <TodoSettingsPanel />}
 
       {tab === 'general' && (
         <div className="panel">

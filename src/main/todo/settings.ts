@@ -34,6 +34,8 @@ export interface TodoSettings {
   webhook_stalled_interval: number
   overlay_settings: OverlaySettings
   overlay_bounds: OverlayBounds
+  wandb_api_key: string
+  wandb_entity: string
 }
 
 export type DeepPartial<T> = { [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K] }
@@ -58,6 +60,8 @@ export const DEFAULT_TODO_SETTINGS: TodoSettings = {
     sideMarqueeEnabled: true,
   },
   overlay_bounds: { x: 100, y: 100, width: 350, height: 250 },
+  wandb_api_key: '',
+  wandb_entity: '',
 }
 
 export const TODO_SETTINGS_KEY = 'todo-settings'
@@ -132,6 +136,8 @@ export function getTodoSettings(db: TodoDB): TodoSettings {
     webhook_stalled_interval: positiveMinutes(raw.webhook_stalled_interval, DEFAULT_TODO_SETTINGS.webhook_stalled_interval),
     overlay_settings: overlaySettings(raw.overlay_settings),
     overlay_bounds: overlayBounds(raw.overlay_bounds),
+    wandb_api_key: typeof raw.wandb_api_key === 'string' ? raw.wandb_api_key : DEFAULT_TODO_SETTINGS.wandb_api_key,
+    wandb_entity: typeof raw.wandb_entity === 'string' ? raw.wandb_entity : DEFAULT_TODO_SETTINGS.wandb_entity,
   }
 }
 
@@ -149,6 +155,8 @@ export function saveTodoSettings(db: TodoDB, patch: DeepPartial<TodoSettings>): 
       ? { ...current.overlay_settings, ...patch.overlay_settings }
       : current.overlay_settings,
     overlay_bounds: patch.overlay_bounds ? { ...current.overlay_bounds, ...patch.overlay_bounds } : current.overlay_bounds,
+    wandb_api_key: patch.wandb_api_key ?? current.wandb_api_key,
+    wandb_entity: patch.wandb_entity ?? current.wandb_entity,
   }
   db.run('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)', [
     TODO_SETTINGS_KEY,
