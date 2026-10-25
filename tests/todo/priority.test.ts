@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { countBangs, computeBangPriorities } from '../../src/main/todo/priority'
+import { countBangs, computeBangPriorities } from '../../src/shared/priority'
 
 describe('countBangs', () => {
   it('统计标题任意位置的 ! 个数', () => {

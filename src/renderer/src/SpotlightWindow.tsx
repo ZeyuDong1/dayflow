@@ -1,0 +1,738 @@
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { parseCommand, type ParsedCommand } from '@shared/commands'
+import { computeBangPriorities } from '@shared/priority'
+import { buildTaskTree, type TaskNode } from '@shared/hierarchy'
+import { getTimerDisplay } from '@shared/reminder-logic'
+import type { TaskRow, TaskProject, TodoEvent } from '@shared/todo-types'
+
+interface AiCard {
+  id: string
+  source: string
+  title: string
+  status: string
+  detail?: string
+  link?: string
+}
+
+interface GpuLite {
+  id: number
+  name: string
+  activeTaskId: number | null
+  last_active_at: string | null
+}
+
+const TYPE_LABEL: Record<string, string> = {
+  EMPTY: '—',
+  MEMO: 'MEMO 备注',
+  CREATE: 'CREATE 创建',
+  FOCUS: 'FOCUS 专注',
+  REMINDER: 'REMINDER 提醒',
+  TRAINING: 'TRAINING 训练',
+  COMPLETE: 'COMPLETE 完成',
+  SUSPEND: 'SUSPEND 挂起',
+}
+
+function parseSimpleTime(input: string): number | null {
+  const match = input.trim().match(/^(\d+)\s*([smh]?)$/i)
+  if (!match) return null
+  const value = parseInt(match[1], 10)
+  const unit = (match[2] || 'm').toLowerCase()
+  if (unit === 'h') return value * 3600
+  if (unit === 's') return value
+  return value * 60
+}
+
+export default function SpotlightWindow() {
+  const [tasks, setTasks] = useState<TaskRow[]>([])
+  const [projects, setProjects] = useState<TaskProject[]>([])
+  const [gpus, setGpus] = useState<GpuLite[]>([])
+  const [input, setInput] = useState('')
+  const [highlightIdx, setHighlightIdx] = useState(-1)
+  const [cards, setCards] = useState<AiCard[]>([])
+  const [collapsed, setCollapsed] = useState<Set<number>>(new Set())
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [editValue, setEditValue] = useState('')
+  const [gpuPick, setGpuPick] = useState<{ title: string; time: number; projectId: number | null; sub?: string } | null>(null)
+  const [gpuIdx, setGpuIdx] = useState(0)
+  const [confirmTask, setConfirmTask] = useState<TaskRow | null>(null)
+  const [pickingProject, setPickingProject] = useState(false)
+  const [resetFor, setResetFor] = useState<TaskRow | null>(null)
+  const [resetValue, setResetValue] = useState('')
+  const [cursorId, setCursorId] = useState<number | null>(null)
+  const [focusToday, setFocusToday] = useState(0)
+  const [now, setNow] = useState(Date.now())
+  const [showReady, setShowReady] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const refresh = useCallback(() => {
+    void window.dayflow.todo.getTasks().then(setTasks)
+    void window.dayflow.todo.focusToday().then(setFocusToday)
+  }, [])
+
+  useEffect(() => {
+    refresh()
+    void window.dayflow.todo.listTaskProjects().then(setProjects)
+    void window.dayflow.todo.getGpus().then((gs) => setGpus(gs as GpuLite[]))
+    inputRef.current?.focus()
+  }, [refresh])
+
+  useEffect(() => {
+    const t = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(t)
+  }, [])
+
+  useEffect(
+    () =>
+      window.dayflow.todo.onEvent((e: TodoEvent) => {
+        if (e.type === 'fetch-tasks' || e.type === 'timer:update') refresh()
+        if (e.type === 'ai:reminder' && e.reminder) {
+          const r = e.reminder
+          setCards((c) =>
+            [{ id: r.id, source: r.source, title: r.title, status: r.status, detail: r.detail, link: r.link }, ...c].slice(0, 20),
+          )
+        }
+        if (e.type === 'ai:reminder-dismissed') {
+          setCards((c) =>
+            c.filter((card) => {
+              if (e.source != null && card.source !== e.source) return true
+              if (e.title != null && card.title !== e.title) return true
+              // 同回复：force 全清；否则保留 needs_input/review 行动卡
+              return e.force === true ? false : card.status === 'needs_input' || card.status === 'review'
+            }),
+          )
+        }
+      }),
+    [refresh],
+  )
+
+  const parsed: ParsedCommand = useMemo(() => parseCommand(input), [input])
+  const priorities = useMemo(() => computeBangPriorities(tasks), [tasks])
+
+  // 建议列表（语义规格 §4.2）
+  const suggestions: TaskRow[] = useMemo(() => {
+    const nonSpecial = tasks.filter((t) => t.status !== 'archived' && t.type !== 'reminder' && t.type !== 'training')
+    const byCreatedDesc = [...nonSpecial].sort((a, b) => b.created_at.localeCompare(a.created_at))
+    const byPrio = (list: TaskRow[]) =>
+      [...list].sort((a, b) => (priorities.get(b.id) ?? 0) - (priorities.get(a.id) ?? 0))
+    if (!input.trim()) {
+      return nonSpecial.filter((t) => t.status === 'queued' && t.is_next_action === 1).slice(0, 10)
+    }
+    if (parsed.type === 'COMPLETE') {
+      const q = (parsed.query ?? '').toLowerCase()
+      return byPrio(byCreatedDesc.filter((t) => t.title.toLowerCase().includes(q)))
+    }
+    if (parsed.isSubtask && parsed.parentSearch) {
+      const q = parsed.parentSearch.toLowerCase()
+      return byPrio(
+        tasks.filter((t) => t.type === 'standard' && t.status !== 'archived' && t.title.toLowerCase().includes(q)),
+      )
+    }
+    const main = (parsed.main ?? '').toLowerCase()
+    return byPrio(
+      byCreatedDesc.filter(
+        (t) =>
+          t.title.toLowerCase().includes(main) ||
+          (parsed.project
+            ? (projects.find((p) => p.id === t.project_id)?.name.toLowerCase().includes(parsed.project.toLowerCase()) ??
+              false)
+            : false),
+      ),
+    )
+  }, [input, parsed, tasks, projects, priorities])
+
+  // 任务树（隐藏 training 任务）
+  const tree: TaskNode<TaskRow>[] = useMemo(
+    () => buildTaskTree(tasks.filter((t) => t.type !== 'training'), priorities),
+    [tasks, priorities],
+  )
+  const flatRows = useMemo(() => {
+    const out: TaskNode<TaskRow>[] = []
+    const walk = (nodes: TaskNode<TaskRow>[]) => {
+      for (const n of nodes) {
+        out.push(n)
+        if (!collapsed.has(n.task.id)) walk(n.children)
+      }
+    }
+    walk(tree)
+    return out
+  }, [tree, collapsed])
+
+  const activeTask = useMemo(
+    () =>
+      tasks.find((t) => t.status === 'active' && t.type === 'standard') ??
+      tasks.find((t) => t.status === 'active' && t.timer_type === 'focus') ??
+      null,
+    [tasks],
+  )
+  const waitingRows = useMemo(
+    () => tasks.filter((t) => t.type === 'standard' && t.status === 'waiting'),
+    [tasks],
+  )
+  const trainingChips = useMemo(
+    () =>
+      tasks
+        .filter((t) => t.type === 'training' && t.status === 'waiting')
+        .sort((a, b) => (a.target_timestamp ?? '').localeCompare(b.target_timestamp ?? ''))
+        .slice(0, 3),
+    [tasks],
+  )
+  const overdue = useMemo(
+    () =>
+      tasks.filter(
+        (t) =>
+          t.type === 'reminder' && t.status === 'waiting' && t.target_timestamp != null && Date.parse(t.target_timestamp) <= now,
+      ),
+    [tasks, now],
+  )
+  const readyList = useMemo(
+    () =>
+      tasks.filter(
+        (t) =>
+          t.type !== 'reminder' && t.status === 'waiting' && t.target_timestamp != null && Date.parse(t.target_timestamp) <= now,
+      ),
+    [tasks, now],
+  )
+
+  const exec = useCallback(
+    async (p: ParsedCommand) => {
+      const res = (await window.dayflow.todo.execCommand(p, {
+        activeTaskId: activeTask?.id ?? null,
+        highlightedId: highlightIdx >= 0 && highlightIdx < suggestions.length ? suggestions[highlightIdx].id : null,
+        suggestionIds: suggestions.map((s) => s.id),
+      })) as { kind: string; draft?: { title: string; time: number; projectId: number | null; sub?: string } }
+      if (res.kind === 'need-gpu-pick' && res.draft) {
+        setGpuPick(res.draft)
+        setGpuIdx(0)
+        return
+      }
+      setInput('')
+      refresh()
+      window.dayflow.todo.hideSpotlight()
+    },
+    [activeTask, highlightIdx, suggestions, refresh],
+  )
+
+  // 完成确认（# 模式）
+  const requestComplete = useCallback((task: TaskRow) => {
+    if (task.type === 'standard' && task.project_id == null) {
+      setConfirmTask(task)
+      setPickingProject(true)
+    } else {
+      setConfirmTask(task)
+      setPickingProject(false)
+    }
+  }, [])
+
+  const doComplete = useCallback(
+    (projectId?: number) => {
+      if (!confirmTask) return
+      if (projectId != null) void window.dayflow.todo.updateTask(confirmTask.id, { project_id: projectId })
+      window.dayflow.todo.completeTask(confirmTask.id)
+      setConfirmTask(null)
+      setPickingProject(false)
+      refresh()
+    },
+    [confirmTask, refresh],
+  )
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (gpuPick) {
+      if (e.key === 'Escape') {
+        setGpuPick(null)
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setGpuIdx((i) => (i + 1) % Math.max(1, gpus.length))
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setGpuIdx((i) => (i - 1 + gpus.length) % Math.max(1, gpus.length))
+      } else if (e.key === 'Enter' && gpus[gpuIdx]) {
+        e.preventDefault()
+        void window.dayflow.todo.execGpuPick(gpuPick, gpus[gpuIdx].id).then(() => {
+          setGpuPick(null)
+          setInput('')
+          refresh()
+          window.dayflow.todo.hideSpotlight()
+        })
+      } else if (/^[1-9]$/.test(e.key) && gpus[parseInt(e.key, 10) - 1]) {
+        e.preventDefault()
+        void window.dayflow.todo.execGpuPick(gpuPick, gpus[parseInt(e.key, 10) - 1].id).then(() => {
+          setGpuPick(null)
+          setInput('')
+          refresh()
+          window.dayflow.todo.hideSpotlight()
+        })
+      }
+      return
+    }
+    if (confirmTask) {
+      if (e.key === 'Escape') {
+        setConfirmTask(null)
+        setPickingProject(false)
+      } else if (e.key === 'Enter') {
+        e.preventDefault()
+        doComplete()
+      }
+      return
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      window.dayflow.todo.hideSpotlight()
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setHighlightIdx((i) => (suggestions.length === 0 ? -1 : (i + 1) % suggestions.length))
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setHighlightIdx((i) => (suggestions.length === 0 ? -1 : (i - 1 + suggestions.length) % suggestions.length))
+    } else if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && editingId == null) {
+      e.preventDefault()
+      if (parsed.type === 'COMPLETE') {
+        const target = highlightIdx >= 0 ? suggestions[highlightIdx] : suggestions[0]
+        if (target) requestComplete(target)
+      } else {
+        void exec(parsed)
+      }
+    } else if (e.ctrlKey && /^[1-9]$/.test(e.key)) {
+      const idx = parseInt(e.key, 10) - 1
+      if (suggestions[idx]) {
+        e.preventDefault()
+        if (parsed.type === 'COMPLETE') requestComplete(suggestions[idx])
+        else {
+          setHighlightIdx(idx)
+          void exec(parsed)
+        }
+      }
+    }
+  }
+
+  // 任务树键盘（Bullet 编辑器语义）
+  const onTreeKeyDown = (e: React.KeyboardEvent, node: TaskNode<TaskRow>) => {
+    const t = node.task
+    const siblings = flatRows.filter((r) => r.task.parent_id === t.parent_id)
+    const sibIdx = siblings.findIndex((r) => r.task.id === t.id)
+    if (e.key === 'Tab') {
+      e.preventDefault()
+      if (e.shiftKey) {
+        // 反缩进：挂到祖父下
+        const parent = tasks.find((x) => x.id === t.parent_id)
+        void window.dayflow.todo.updateTask(t.id, { parent_id: parent?.parent_id ?? null }).then(refresh)
+      } else if (sibIdx > 0) {
+        // 缩进：变前一兄弟的子级
+        void window.dayflow.todo.updateTask(t.id, { parent_id: siblings[sibIdx - 1].task.id }).then(refresh)
+      }
+    } else if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && editingId == null) {
+      e.preventDefault()
+      // 新建子任务（空白草稿）
+      void window.dayflow.todo.createTask('', { parentId: t.id, skipDedup: true }).then((row) => {
+        setEditingId(row.id)
+        setEditValue('')
+        refresh()
+      })
+    } else if (e.key === 'Enter' && e.shiftKey) {
+      e.preventDefault()
+      void window.dayflow.todo.createTask('', { parentId: t.parent_id, skipDedup: true }).then((row) => {
+        setEditingId(row.id)
+        setEditValue('')
+        refresh()
+      })
+    } else if (e.ctrlKey && e.key === 'Enter') {
+      e.preventDefault()
+      window.dayflow.todo.completeTask(t.id)
+      refresh()
+    } else if (e.ctrlKey && e.key === 'Backspace') {
+      e.preventDefault()
+      void window.dayflow.todo.deleteTask(t.id).then(refresh)
+    } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault()
+      const idx = flatRows.findIndex((r) => r.task.id === t.id)
+      const next = flatRows[idx + (e.key === 'ArrowDown' ? 1 : -1)]
+      if (next) {
+        setCursorId(next.task.id)
+        const el = document.querySelector<HTMLElement>(`[data-row-id="${next.task.id}"] input`)
+        el?.focus()
+      }
+    }
+  }
+
+  const commitEdit = (id: number) => {
+    void window.dayflow.todo.updateTask(id, { title: editValue }).then(() => {
+      setEditingId(null)
+      refresh()
+    })
+  }
+
+  return (
+    <div className="sw-root" onKeyDown={onKeyDown}>
+      <div className="sw-inputbar">
+        <span className="sw-search">🔍</span>
+        <input
+          ref={inputRef}
+          className="sw-input"
+          value={input}
+          onChange={(e) => {
+            setInput(e.target.value)
+            setHighlightIdx(-1)
+          }}
+          placeholder="输入任务... (! 切换, @ 挂起, + 提醒, % 训练, > 备注) · 下方可直接编辑任务树"
+        />
+        {input.trim() && (
+          <span className="sw-chip">
+            {TYPE_LABEL[parsed.type] ?? parsed.type} <b>↵ Enter</b>
+          </span>
+        )}
+      </div>
+
+      {gpuPick ? (
+        <div className="sw-gpupick">
+          <div className="sw-section-title">选择 GPU：{gpuPick.title}（{Math.round(gpuPick.time / 60)} 分钟）</div>
+          {gpus.map((g, i) => (
+            <div key={g.id} className={`sw-gpu-row ${i === gpuIdx ? 'hl' : ''}`}>
+              <span>{g.name}</span>
+              <span className="sw-dim">{g.activeTaskId != null ? `Busy: 任务 #${g.activeTaskId}` : 'Idle'}</span>
+              <span className="sw-dim">^{i + 1}</span>
+            </div>
+          ))}
+        </div>
+      ) : confirmTask ? (
+        <div className="sw-confirm">
+          <div className="sw-section-title">
+            {pickingProject ? `选择项目后完成：${confirmTask.title}` : `完成任务：${confirmTask.title}？`}
+          </div>
+          {pickingProject &&
+            projects.map((p, i) => (
+              <button
+                key={p.id}
+                className="sw-project-item"
+                onClick={() => doComplete(p.id)}
+              >
+                {p.name} <span className="sw-dim">^{i + 1}</span>
+              </button>
+            ))}
+          {!pickingProject && (
+            <div className="sw-actions">
+              <button className="sw-btn" onClick={() => doComplete()}>
+                Complete (Enter)
+              </button>
+              <button className="sw-btn ghost" onClick={() => setConfirmTask(null)}>
+                Cancel (Esc)
+              </button>
+            </div>
+          )}
+        </div>
+      ) : (
+        <>
+          {activeTask && (
+            <div className="sw-active">
+              <div className="sw-focus-card">
+                <span className="sw-badge">FOCUS</span>
+                {activeTask.project_id != null && (
+                  <span className="sw-project-chip">
+                    #{projects.find((p) => p.id === activeTask.project_id)?.name ?? ''}
+                  </span>
+                )}
+                <span className="sw-focus-title">{activeTask.title}</span>
+                <span className="sw-timer">{getTimerDisplay(activeTask, now)}</span>
+              </div>
+              {waitingRows.map((w) => (
+                <div key={w.id} className="sw-wait-row" onClick={() => window.dayflow.todo.startFocus(w.id)}>
+                  <span>⏱ {w.title}</span>
+                  <span className="sw-dim">{getTimerDisplay(w, now)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {trainingChips.length > 0 && (
+            <div className="sw-train-row">
+              {trainingChips.map((t) => (
+                <span
+                  key={t.id}
+                  className="sw-train-chip"
+                  title="单击取消倒计时"
+                  onClick={() => window.dayflow.todo.cancelWait(t.id)}
+                >
+                  {t.title} · {getTimerDisplay(t, now)}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {overdue.length > 0 && (
+            <div className="sw-banner">
+              {overdue.map((t) => (
+                <div key={t.id} className="sw-banner-row">
+                  <span className="sw-banner-title">⏰ {t.title}</span>
+                  <span className="sw-actions">
+                    <button className="sw-btn" onClick={() => setResetFor(t)}>
+                      再提醒
+                    </button>
+                    <button
+                      className="sw-btn"
+                      onClick={() => {
+                        window.dayflow.todo.startFocus(t.id)
+                        refresh()
+                      }}
+                    >
+                      ▶
+                    </button>
+                    <button
+                      className="sw-btn"
+                      onClick={() => {
+                        void window.dayflow.todo.updateTask(t.id, { status: 'archived' }).then(() => {
+                          window.dayflow.todo.cancelWait(t.id)
+                          refresh()
+                        })
+                      }}
+                    >
+                      ✓
+                    </button>
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {cards.length > 0 && (
+            <div className="sw-cards">
+              {cards.map((c) => (
+                <div key={c.id} className="sw-card">
+                  <span className={`sw-pill st-${c.status}`}>
+                    {c.status === 'success' ? '✓' : c.status === 'failure' ? '✕' : c.status === 'needs_input' ? '!' : c.status === 'review' ? '?' : c.status === 'progress' ? '⋯' : 'i'}
+                  </span>
+                  <span className="sw-card-text">
+                    {c.source} · {c.title}
+                  </span>
+                  <span className="sw-actions">
+                    <button
+                      className="sw-btn ghost"
+                      title="转为软提醒"
+                      onClick={() => {
+                        void window.dayflow.todo.aiPromote(c.source, c.title, c.detail, c.link)
+                        window.dayflow.todo.aiDismiss({ source: c.source, title: c.title })
+                        setCards((cs) => cs.filter((x) => x.id !== c.id))
+                        refresh()
+                      }}
+                    >
+                      🔔
+                    </button>
+                    <button
+                      className="sw-btn ghost"
+                      title="忽略"
+                      onClick={() => {
+                        window.dayflow.todo.aiDismiss({ id: c.id })
+                        setCards((cs) => cs.filter((x) => x.id !== c.id))
+                      }}
+                    >
+                      ✓
+                    </button>
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="sw-tree">
+            {flatRows.map((node) => {
+              const t = node.task
+              const isCursor = cursorId === t.id
+              return (
+                <div
+                  key={t.id}
+                  data-row-id={t.id}
+                  className={`sw-row ${isCursor ? 'cursor' : ''}`}
+                  style={{ paddingLeft: 8 + node.depth * 18 }}
+                  onKeyDown={(e) => onTreeKeyDown(e, node)}
+                  onClick={() => setCursorId(t.id)}
+                >
+                  <span
+                    className="sw-fold"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setCollapsed((s) => {
+                        const n = new Set(s)
+                        if (n.has(t.id)) n.delete(t.id)
+                        else n.add(t.id)
+                        return n
+                      })
+                    }}
+                  >
+                    {node.children.length > 0 ? (collapsed.has(t.id) ? '▸' : '▾') : '·'}
+                  </span>
+                  <button className="sw-icon" title="设为 Focus" onClick={() => window.dayflow.todo.startFocus(t.id)}>
+                    ▶
+                  </button>
+                  <button
+                    className="sw-icon"
+                    title="设为副 Focus"
+                    onClick={() => void window.dayflow.todo.setSideFocus(t.id, t.is_side_focus !== 1).then(refresh)}
+                  >
+                    {t.is_side_focus === 1 ? '◎' : '○'}
+                  </button>
+                  {editingId === t.id ? (
+                    <input
+                      className="sw-edit"
+                      autoFocus
+                      value={editValue}
+                      onChange={(e) => setEditValue(e.target.value)}
+                      onBlur={() => commitEdit(t.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          commitEdit(t.id)
+                        } else if (e.key === 'Backspace' && editValue === '') {
+                          e.preventDefault()
+                          void window.dayflow.todo.deleteTask(t.id).then(() => {
+                            setEditingId(null)
+                            refresh()
+                          })
+                        }
+                      }}
+                    />
+                  ) : (
+                    <span
+                      className="sw-title"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setEditingId(t.id)
+                        setEditValue(t.title)
+                      }}
+                    >
+                      {t.title || '（草稿）'}
+                    </span>
+                  )}
+                  {t.status === 'waiting' && <span className="sw-dim">⏳</span>}
+                  <span className="sw-row-ops">
+                    <button
+                      className="sw-icon"
+                      title="倒计时"
+                      onClick={() => {
+                        const secs = 25 * 60
+                        window.dayflow.todo.startWait(t.id, secs)
+                        refresh()
+                      }}
+                    >
+                      ⏱
+                    </button>
+                    <button className="sw-icon" title="完成" onClick={() => window.dayflow.todo.completeTask(t.id)}>
+                      ✓
+                    </button>
+                    <button
+                      className="sw-icon"
+                      title="删除"
+                      onClick={() => void window.dayflow.todo.deleteTask(t.id).then(refresh)}
+                    >
+                      🗑
+                    </button>
+                  </span>
+                </div>
+              )
+            })}
+            {suggestions.length > 0 && input.trim() && (
+              <div className="sw-sugg">
+                <div className="sw-section-title">建议</div>
+                {suggestions.map((s, i) => (
+                  <div
+                    key={s.id}
+                    className={`sw-sugg-row ${i === highlightIdx ? 'hl' : ''}`}
+                    onClick={() => {
+                      if (parsed.type === 'COMPLETE') requestComplete(s)
+                      else {
+                        setHighlightIdx(i)
+                        void exec(parsed)
+                      }
+                    }}
+                  >
+                    <span className="sw-project-chip">
+                      #{projects.find((p) => p.id === s.project_id)?.name ?? 'Inbox'}
+                    </span>
+                    <span>{s.title}</span>
+                    {s.tag && <span className="sw-dim">#{s.tag}</span>}
+                    <span className="sw-dim">^{i + 1}</span>
+                  </div>
+                ))}
+                {suggestions.length === 0 && <div className="sw-dim">无匹配，Enter 创建「{parsed.main}」</div>}
+              </div>
+            )}
+            {input.trim() && suggestions.length === 0 && (
+              <div className="sw-dim">No matches. Press Enter to create "{parsed.main}"</div>
+            )}
+          </div>
+
+          {readyList.length > 0 && (
+            <div className="sw-ready">
+              {!showReady && (
+                <button className="sw-btn" onClick={() => setShowReady(true)}>
+                  Tasks Ready ({readyList.length})
+                </button>
+              )}
+              {showReady &&
+                readyList.map((t) => (
+                  <div key={t.id} className="sw-wait-row">
+                    <span>{t.title}</span>
+                    <span className="sw-actions">
+                      <button
+                        className="sw-btn"
+                        onClick={() => {
+                          if (t.type !== 'training') void window.dayflow.todo.updateTask(t.id, { status: 'archived' })
+                          window.dayflow.todo.cancelWait(t.id)
+                          refresh()
+                        }}
+                      >
+                        Done
+                      </button>
+                      <button className="sw-btn ghost" onClick={() => setShowReady(false)}>
+                        Skip
+                      </button>
+                    </span>
+                  </div>
+                ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {resetFor && (
+        <div className="sw-reset">
+          <div className="sw-section-title">重新设定倒计时：{resetFor.title}</div>
+          <div className="sw-actions">
+            {[5, 20, 40].map((m) => (
+              <button
+                key={m}
+                className="sw-btn"
+                onClick={() => {
+                  window.dayflow.todo.startWait(resetFor.id, m * 60)
+                  setResetFor(null)
+                  refresh()
+                }}
+              >
+                +{m}m
+              </button>
+            ))}
+            <input
+              className="sw-edit"
+              placeholder="30m, 1h, 45s ..."
+              value={resetValue}
+              onChange={(e) => setResetValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  const secs = parseSimpleTime(resetValue)
+                  if (secs != null) {
+                    window.dayflow.todo.startWait(resetFor.id, secs)
+                    setResetFor(null)
+                    setResetValue('')
+                    refresh()
+                  }
+                } else if (e.key === 'Escape') setResetFor(null)
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      <div className="sw-footer">
+        <span>Total Focus Today: {(focusToday / 3600).toFixed(1)}h</span>
+        <span className="sw-dim">↑↓ Nav · Esc Hide</span>
+        <span className="sw-dim">! 切换 / + 提醒 / % 训练 / &gt; 备注 / ↵ 子任务 / ⇧↵ 同级 / ⇥ 缩进 / ⌃↵ 完成 / ▶ Focus</span>
+      </div>
+    </div>
+  )
+}

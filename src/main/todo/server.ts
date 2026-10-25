@@ -8,7 +8,7 @@ import type { TaskService } from './service'
 import type { GpuService } from './gpu-service'
 import type { TimerManager, TrainingUpdateInput, SyntheticTask } from './timer-manager'
 import type { AiReminderService } from './ai-reminder'
-import { computeBangPriorities } from './priority'
+import { computeBangPriorities } from '../../shared/priority'
 import type { TaskRow } from '../../shared/todo-types'
 
 export interface TodoServerDeps {

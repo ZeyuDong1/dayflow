@@ -8,6 +8,14 @@ import type { TimerManager } from './timer-manager'
 import type { AiReminderService } from './ai-reminder'
 import type { TodoSettings, DeepPartial } from './settings'
 import type { TaskRow } from '../../shared/todo-types'
+import type { ParsedCommand } from '../../shared/commands'
+import {
+  executeCommand,
+  confirmGpuPick,
+  type ExecDomainOps,
+  type ExecResult,
+  type TrainingDraft,
+} from '../../shared/execute-command'
 
 export interface IpcRegistry {
   handle(channel: string, fn: (...args: never[]) => unknown): void
@@ -36,6 +44,27 @@ export function startFocusWithRotation(deps: TodoIpcDeps, taskId: number): void 
     deps.tasks.setSideFocus(current.id, true) // 满员返回 false，静默跳过
   }
   deps.timerManager.startFocus(taskId)
+}
+
+/** 主进程领域操作适配（executeCommand 的同步后端）。 */
+function makeMainDomainOps(deps: TodoIpcDeps): ExecDomainOps {
+  return {
+    getTasks: () => deps.tasks.getAllTasks(),
+    listTaskProjects: () => deps.tasks.listTaskProjects(),
+    getGpus: () => deps.gpus.getAllGpus(),
+    createTask: (title, o) =>
+      deps.tasks.createTask(title, {
+        type: o.type as never,
+        projectId: o.projectId,
+        parentId: o.parentId,
+        skipDedup: o.skipDedup,
+      }),
+    updateTask: (id, updates) => deps.tasks.updateTask(id, updates),
+    appendMemo: (id, text) => deps.tasks.appendMemo(id, text),
+    startFocus: (id) => startFocusWithRotation(deps, id),
+    startWait: (id, seconds) => deps.timerManager.startWait(id, seconds),
+    assignTaskToGpu: (taskId, gpuId, minutes) => deps.timerManager.startTraining(taskId, gpuId, minutes * 60),
+  }
 }
 
 export function registerTodoIpc(reg: IpcRegistry, deps: TodoIpcDeps): void {
@@ -105,4 +134,41 @@ export function registerTodoIpc(reg: IpcRegistry, deps: TodoIpcDeps): void {
   // 设置域
   reg.handle('todo:get-settings', (() => deps.getSettings()) as never)
   reg.handle('todo:update-settings', ((_e: never, patch: DeepPartial<TodoSettings>) => deps.saveSettings(patch)) as never)
+
+  // 今日专注秒数（Spotlight footer 真实统计，附 C 决定 #4）
+  reg.handle('todo:focus-today', (() => {
+    const day = new Date().toISOString().slice(0, 10)
+    const row = deps.tasks.getFocusSecondsForDay(day)
+    return row
+  }) as never)
+
+  // Spotlight 命令执行（主进程同步适配真实服务；渲染端传解析结果+上下文 id）
+  reg.handle(
+    'todo:exec-command',
+    ((
+      _e: never,
+      parsed: ParsedCommand,
+      ctx: { activeTaskId?: number | null; highlightedId?: number | null; suggestionIds?: number[] },
+    ): ExecResult => {
+      const ops = makeMainDomainOps(deps)
+      const all = ops.getTasks()
+      return executeCommand(parsed, {
+        activeTask: (ctx.activeTaskId != null ? all.find((t) => t.id === ctx.activeTaskId) : null) ?? null,
+        highlighted: (ctx.highlightedId != null ? all.find((t) => t.id === ctx.highlightedId) : null) ?? null,
+        suggestions: (ctx.suggestionIds ?? [])
+          .map((id) => all.find((t) => t.id === id))
+          .filter((t): t is TaskRow => Boolean(t)),
+        domain: ops,
+      })
+    }) as never,
+  )
+  reg.handle(
+    'todo:exec-gpu-pick',
+    ((_e: never, draft: TrainingDraft, gpuId: number): ExecResult =>
+      confirmGpuPick(
+        { activeTask: null, highlighted: null, suggestions: [], domain: makeMainDomainOps(deps) },
+        draft,
+        gpuId,
+      )) as never,
+  )
 }

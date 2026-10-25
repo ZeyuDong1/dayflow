@@ -136,6 +136,19 @@ export class TaskService {
     this.db.run('DELETE FROM tasks')
   }
 
+  /** 某日专注总秒数（history 汇总，ISO 日前缀匹配）。 */
+  getFocusSecondsForDay(day: string): number {
+    const rows = this.db.all<{ start_time: string; end_time: string }>(
+      "SELECT start_time, end_time FROM history WHERE type = 'focus' AND start_time LIKE ?",
+      [`${day}%`],
+    )
+    let total = 0
+    for (const r of rows) {
+      total += Math.max(0, Math.floor((Date.parse(r.end_time) - Date.parse(r.start_time)) / 1000))
+    }
+    return total
+  }
+
   /** 任务项目（独立于 Dayflow 类型树的轻量列表）。 */
   listTaskProjects(): TaskProject[] {
     return this.db.all<TaskProject>('SELECT * FROM task_projects ORDER BY id ASC')

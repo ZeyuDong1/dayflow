@@ -18,8 +18,10 @@ export * from './timer-manager'
 export * from './ai-reminder'
 export * from './server'
 export * from '../../shared/commands'
-export * from './priority'
-export * from './hierarchy'
+export * from '../../shared/priority'
+export * from '../../shared/hierarchy'
+
+
 
 
 export interface TodoDomain {

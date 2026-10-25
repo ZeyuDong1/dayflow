@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildTaskTree, getAncestorChain, type TreeTask } from '../../src/main/todo/hierarchy'
+import { buildTaskTree, getAncestorChain, type TreeTask } from '../../src/shared/hierarchy'
 
 let seq = 0
 function mk(

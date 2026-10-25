@@ -262,6 +262,55 @@ const api = {
     hideReminder: (): void => {
       ipcRenderer.send('todo:reminder-hide')
     },
+    hideSpotlight: (): void => {
+      ipcRenderer.send('todo:hide-spotlight')
+    },
+    createTask: (
+      title: string,
+      opts?: {
+        type?: string
+        projectId?: number | null
+        parentId?: number | null
+        skipDedup?: boolean
+        tag?: string
+        estimated_duration?: number | null
+      },
+    ): Promise<import('../shared/todo-types').TaskRow> =>
+      ipcRenderer.invoke('todo:create-task', title, opts),
+    getSuggestions: (maxMinutes?: number): Promise<import('../shared/todo-types').TaskRow[]> =>
+      ipcRenderer.invoke('todo:get-suggestions', maxMinutes),
+    setSideFocus: (id: number, enabled: boolean): Promise<boolean> =>
+      ipcRenderer.invoke('todo:set-side-focus', id, enabled),
+    deleteTask: (id: number): Promise<number[]> => ipcRenderer.invoke('todo:delete-task', id),
+    startWait: (id: number, seconds: number): void => {
+      ipcRenderer.send('todo:start-wait', id, seconds)
+    },
+    cancelWait: (id: number): void => {
+      ipcRenderer.send('todo:cancel-wait', id)
+    },
+    addMemo: (id: number, text: string): void => {
+      ipcRenderer.send('todo:add-memo', id, text)
+    },
+    assignGpu: (taskId: number, gpuId: number, minutes: number): void => {
+      ipcRenderer.send('todo:assign-gpu', taskId, gpuId, minutes)
+    },
+    aiPromote: (source: string, title: string, detail?: string, link?: string): Promise<unknown> =>
+      ipcRenderer.invoke('todo:ai-promote', source, title, detail, link),
+    aiDismiss: (payload: { id?: string; source?: string; title?: string; force?: boolean }): void => {
+      ipcRenderer.send('todo:ai-dismiss', payload)
+    },
+    focusToday: (): Promise<number> => ipcRenderer.invoke('todo:focus-today'),
+    getGpus: (): Promise<(import('../shared/todo-types').GpuRow & { activeTaskId: number | null })[]> =>
+      ipcRenderer.invoke('todo:get-gpus'),
+    execCommand: (
+      parsed: import('../shared/commands').ParsedCommand,
+      ctx: { activeTaskId?: number | null; highlightedId?: number | null; suggestionIds?: number[] },
+    ): Promise<{ kind: string; taskId?: number; draft?: unknown; reason?: string }> =>
+      ipcRenderer.invoke('todo:exec-command', parsed, ctx),
+    execGpuPick: (
+      draft: { title: string; time: number; projectId: number | null; sub?: string },
+      gpuId: number,
+    ): Promise<{ kind: string; taskId?: number }> => ipcRenderer.invoke('todo:exec-gpu-pick', draft, gpuId),
     listTaskProjects: (): Promise<import('../shared/todo-types').TaskProject[]> =>
       ipcRenderer.invoke('todo:list-task-projects'),
     createTaskProject: (name: string, color?: string): Promise<import('../shared/todo-types').TaskProject> =>
