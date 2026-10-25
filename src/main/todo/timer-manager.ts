@@ -25,6 +25,8 @@ export interface TimerDeps {
   now: () => number
   setTimeoutFn?: (fn: () => void, ms: number) => unknown
   clearTimeoutFn?: (handle: unknown) => void
+  /** 硬到期的系统通知（P2 接 Electron Notification；测试注入 spy；reminder 软路径不调用） */
+  notify?: (opts: { title: string; body: string; silent?: boolean }) => void
 }
 
 const FOCUS_MIN_ACCOUNTING_SECONDS = 180
@@ -109,5 +111,142 @@ export class TimerManager {
       db.run('UPDATE tasks SET total_duration = total_duration + ? WHERE id = ?', [seconds, cur.id])
       cur = cur.parent_id != null ? this.deps.tasks.getTask(cur.parent_id) : undefined
     }
+  }
+
+  // ---------- wait / training 倒计时 ----------
+
+  scheduleWaitCompletion(taskId: number, delayMs: number): void {
+    this.clearWaitTimeout(taskId)
+    const handle = (this.deps.setTimeoutFn ?? setTimeout)(() => {
+      this.waitTimers.delete(taskId)
+      this.handleTimerExpiration(taskId)
+    }, Math.max(0, delayMs))
+    this.waitTimers.set(taskId, handle)
+  }
+
+  /** 挂起倒计时：先结算同任务 focus（防丢时长）；每任务 timer 行唯一。 */
+  startWait(taskId: number, durationSeconds: number): void {
+    const { db, tasks, broadcast } = this.deps
+    for (const r of db.all<TimerRow>("SELECT * FROM timers WHERE task_id = ? AND type = 'focus'", [taskId])) {
+      this.settleFocusTimer(r)
+    }
+    this.clearWaitTimeout(taskId)
+    db.run('DELETE FROM timers WHERE task_id = ?', [taskId])
+    const nowIso = this.nowIso()
+    const target = new Date(this.deps.now() + durationSeconds * 1000).toISOString()
+    db.run(
+      "INSERT INTO timers (task_id, type, target_timestamp, original_duration, started_at) VALUES (?, 'wait', ?, ?, ?)",
+      [taskId, target, durationSeconds, nowIso],
+    )
+    tasks.updateTask(taskId, { status: 'waiting' })
+    this.scheduleWaitCompletion(taskId, durationSeconds * 1000)
+    broadcast({ type: 'timer:update' })
+  }
+
+  /** 取消倒计时：training/reminder 整任务删除（有 GPU 先释放）；其余回 queued；archived 不动。 */
+  cancelWait(taskId: number): void {
+    const { db, tasks, gpus, broadcast } = this.deps
+    this.clearWaitTimeout(taskId)
+    db.run('DELETE FROM timers WHERE task_id = ?', [taskId])
+    const task = tasks.getTask(taskId)
+    if (!task) return
+    if (task.type === 'training' || task.type === 'reminder') {
+      if (task.gpu_id != null) gpus.setGpuIdle(task.gpu_id)
+      tasks.deleteTask(taskId)
+    } else if (task.status !== 'archived') {
+      tasks.updateTask(taskId, { status: 'queued' })
+    }
+    broadcast({ type: 'timer:update' })
+  }
+
+  /** 贪睡：只改 target_timestamp（不改 original_duration），status 不变。 */
+  snoozeTrainingReminder(taskId: number, minutes: number): void {
+    const { db, now } = this.deps
+    const row = db.get<TimerRow>('SELECT * FROM timers WHERE task_id = ?', [taskId])
+    if (!row) return
+    const target = new Date(now() + minutes * 60000).toISOString()
+    db.run('UPDATE timers SET target_timestamp = ? WHERE id = ?', [target, row.id])
+    this.scheduleWaitCompletion(taskId, minutes * 60000)
+  }
+
+  /** 训练计时：同 GPU 串行（被占先暂停旧任务）；启动前结算同任务 focus（防丢时长）。 */
+  startTraining(taskId: number, gpuId: number, durationSeconds: number): void {
+    const { db, tasks, gpus, broadcast } = this.deps
+    const busy = db.get<{ id: number }>(
+      "SELECT id FROM tasks WHERE gpu_id = ? AND status = 'active' AND type = 'training' LIMIT 1",
+      [gpuId],
+    )
+    if (busy && busy.id !== taskId) this.pauseTraining(busy.id)
+    for (const r of db.all<TimerRow>("SELECT * FROM timers WHERE task_id = ? AND type = 'focus'", [taskId])) {
+      this.settleFocusTimer(r)
+    }
+    this.clearWaitTimeout(taskId)
+    db.run('DELETE FROM timers WHERE task_id = ?', [taskId])
+    const nowIso = this.nowIso()
+    const target = new Date(this.deps.now() + durationSeconds * 1000).toISOString()
+    db.run(
+      "INSERT INTO timers (task_id, type, target_timestamp, original_duration, started_at) VALUES (?, 'training', ?, ?, ?)",
+      [taskId, target, durationSeconds, nowIso],
+    )
+    gpus.setGpuBusy(gpuId)
+    tasks.updateTask(taskId, { status: 'active', gpu_id: gpuId })
+    this.scheduleWaitCompletion(taskId, durationSeconds * 1000)
+    broadcast({ type: 'timer:update' })
+  }
+
+  /** 暂停训练：释放 GPU、删计时、回队列、清 gpu_id。 */
+  pauseTraining(taskId: number): void {
+    const { db, tasks, gpus, broadcast } = this.deps
+    this.clearWaitTimeout(taskId)
+    db.run('DELETE FROM timers WHERE task_id = ?', [taskId])
+    const task = tasks.getTask(taskId)
+    if (task) {
+      if (task.gpu_id != null) gpus.setGpuIdle(task.gpu_id)
+      tasks.updateTask(taskId, { status: 'queued', gpu_id: null })
+    }
+    broadcast({ type: 'timer:update' })
+  }
+
+  /** 停止训练：已完成/forceComplete → 归档并建跟进任务 `Process {原标题}`；否则回队列。 */
+  stopTraining(taskId: number, forceComplete = false): void {
+    const { db, tasks, gpus, broadcast, now } = this.deps
+    const task = tasks.getTask(taskId)
+    const row = db.get<TimerRow>('SELECT * FROM timers WHERE task_id = ?', [taskId])
+    this.clearWaitTimeout(taskId)
+    db.run('DELETE FROM timers WHERE task_id = ?', [taskId])
+    if (!task) return
+    if (task.gpu_id != null) gpus.setGpuIdle(task.gpu_id)
+    const expired = row?.target_timestamp != null && Date.parse(row.target_timestamp) - now() <= 0
+    if (forceComplete || expired) {
+      tasks.updateTask(taskId, { status: 'archived' })
+      tasks.createTask(`Process ${task.title}`, { projectId: task.project_id })
+    } else {
+      tasks.updateTask(taskId, { status: 'queued', gpu_id: null })
+    }
+    broadcast({ type: 'timer:update' })
+  }
+
+  /** 到期：不删行、不改 status；reminder 软路径无通知；其余发静音通知；一律广播 timer:ended。 */
+  handleTimerExpiration(taskId: number): void {
+    const { db, tasks, gpus, broadcast, notify } = this.deps
+    this.clearWaitTimeout(taskId)
+    const task = tasks.getTask(taskId)
+    const row = db.get<TimerRow>('SELECT * FROM timers WHERE task_id = ?', [taskId])
+    if (!task || !row) return // 审查重点#4：缺任务/缺行静默返回
+    if (task.type === 'training' && task.gpu_id != null) gpus.setGpuIdle(task.gpu_id)
+    if (task.type !== 'reminder') {
+      notify?.({
+        title: task.type === 'training' ? 'Training Complete' : 'Timer Finished',
+        body: task.title,
+        silent: true,
+      })
+    }
+    broadcast({ type: 'timer:ended', taskId, task })
+    broadcast({ type: 'timer:update' })
+  }
+
+  /** 清空全部内存 timeout（delete-all-tasks 前由 main 调用）。 */
+  cancelAll(): void {
+    for (const taskId of [...this.waitTimers.keys()]) this.clearWaitTimeout(taskId)
   }
 }
