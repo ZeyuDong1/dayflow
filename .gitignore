@@ -2,6 +2,9 @@ node_modules/
 out/
 release/
 release-build/
+vendor/ai-memory/ai-memory.exe
+vendor/ai-memory/*.zip
+vendor/ai-memory/.tmp/
 *.tsbuildinfo
 *.log
 .DS_Store

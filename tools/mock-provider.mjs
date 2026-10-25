@@ -80,6 +80,11 @@ const server = http.createServer((req, res) => {
       })
     } else {
       text = 'Mock provider reply: connection successful.'
+      // e2e 断言辅助:导师人格 prompt 到达时,回复附带 MEMO 行,
+      // 用于验证"人格注入 + MEMO 记忆回收"闭环。
+      if (/你是「小舟」/.test(promptText)) {
+        text += '\nMEMO: e2e记忆回收验证:用户目标是学好 TypeScript 泛型'
+      }
     }
 
     if (isStream && isAnthropic) {

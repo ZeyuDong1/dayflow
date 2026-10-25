@@ -7,6 +7,12 @@ directories:
 files:
   - out/**
   - package.json
+extraResources:
+  - from: vendor/ai-memory
+    to: ai-memory
+    filter:
+      - ai-memory.exe
+      - manifest.json
 asarUnpack:
   - node_modules/active-win
   - node_modules/koffi

@@ -32,6 +32,9 @@ import {
 import { getStandup, generateStandup, getDayPlan, saveDayPlan } from './ai/standup'
 import { buildWeeklyReview, buildDaySummary, weekStartFor } from './weekly'
 import { listModels, testConnection } from './ai/providers'
+import { memoryServerInfo, startMemoryServer } from './memory/sidecar'
+import { memoryQuery } from './memory/client'
+import { reflectNow, restartReflectionLoop } from './ai/reflect-tick'
 import * as chat from './ai/chat'
 import { exportMarkdown } from './exporter'
 import { getStorageUsage, runCleanup, deleteAllData } from './cleanup'
@@ -50,6 +53,7 @@ export function registerIpc(win: BrowserWindow): void {
     const next = saveSettings(patch)
     if (patch.capture) restartCapture()
     if (patch.ai) classifyBacklogApps()
+    if (patch.tutor) restartReflectionLoop()
     return next
   })
 
@@ -183,6 +187,12 @@ export function registerIpc(win: BrowserWindow): void {
   // -- AI admin --------------------------------------------------------------
   ipcMain.handle('ai:test', async () => testConnection())
   ipcMain.handle('ai:models', async (_e, provider: string) => listModels(provider as never))
+
+  // -- 学习导师（记忆侧车 + 反思） ---------------------------------------------
+  ipcMain.handle('tutor:status', () => memoryServerInfo())
+  ipcMain.handle('tutor:startMemory', () => startMemoryServer())
+  ipcMain.handle('tutor:reflectNow', () => reflectNow())
+  ipcMain.handle('tutor:searchMemory', (_e, query: string) => memoryQuery(query, 8))
 
   // -- Export ------------------------------------------------------------------
   ipcMain.handle('export:markdown', async (_e, start: string, end: string) => exportMarkdown(start, end))

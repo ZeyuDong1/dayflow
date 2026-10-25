@@ -12,6 +12,9 @@ import {
   captureEnabled
 } from './capture'
 import { startPipeline, stopPipeline, onCardsChanged } from './ai/analyze'
+import { startMemoryServer, stopMemoryServer } from './memory/sidecar'
+import { bootstrapMemory } from './memory/client'
+import { startReflectionLoop, stopReflectionLoop } from './ai/reflect-tick'
 import { startCleanupSchedule, stopCleanupSchedule } from './cleanup'
 import { registerIpc } from './ipc'
 import { updateTray, destroyTray } from './tray'
@@ -134,6 +137,13 @@ if (!gotLock) {
     applyLoginItem()
     updateTray(showMainWindow)
 
+    // 记忆侧车(ai-memory) + 导师反思循环。
+    void startMemoryServer().then(async (ok) => {
+      if (!ok) return
+      await bootstrapMemory(getSettings().tutor.goal)
+      startReflectionLoop()
+    })
+
     // Classify never-seen apps (including a backlog from before setup).
     classifyBacklogApps()
 
@@ -191,6 +201,8 @@ app.on('before-quit', () => {
   stopCapture()
   stopWindowTracking()
   stopPipeline()
+  stopReflectionLoop()
+  stopMemoryServer()
   stopCleanupSchedule()
   db.flush()
 })

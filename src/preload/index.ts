@@ -194,7 +194,22 @@ const api = {
     productivityIndex: number | null
   }> => ipcRenderer.invoke('report:projectStats', startDay, endDay),
   exportTimesheet: (startDay: string, endDay: string): Promise<{ ok: boolean; message: string }> =>
-    ipcRenderer.invoke('report:timesheet', startDay, endDay)
+    ipcRenderer.invoke('report:timesheet', startDay, endDay),
+
+  // 学习导师（记忆 + 反思）
+  tutorStatus: (): Promise<{
+    running: boolean
+    port: number
+    dataDir: string
+    binaryPath: string
+    version: string
+    lastError: string | null
+  }> => ipcRenderer.invoke('tutor:status'),
+  tutorReflectNow: (): Promise<boolean> => ipcRenderer.invoke('tutor:reflectNow'),
+  tutorSearchMemory: (
+    query: string
+  ): Promise<{ path: string; title: string; snippet: string; rank: number }[]> =>
+    ipcRenderer.invoke('tutor:searchMemory', query)
 }
 
 export type DayflowApi = typeof api

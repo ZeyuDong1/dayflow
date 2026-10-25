@@ -100,11 +100,67 @@ export interface GeneralConfig {
   userName: string
 }
 
+// ---------------------------------------------------------------------------
+// 学习守护（常驻 Agent，非会话制）
+// ---------------------------------------------------------------------------
+
+export interface TutorConfig {
+  enabled: boolean // 守护开关：开启后 Agent 一直在线监督
+  goal: string // 学习目标描述（判定与督促语的依据）
+  allowedProjectIds: number[] // 学习项目白名单；为空时按效率分判定(>=6 学习, <=3 分心)
+  gentleSec: number // 分心持续多久发轻提醒（桌面通知）
+  interruptSec: number // 分心持续多久强打断（置顶弹窗 + 声音）
+  repeatSec: number // 持续分心时重复强打断的间隔
+  breakMinutes: number // 一键休息的默认时长
+  soundEnabled: boolean // 强打断时播放提示音
+  reflectMinutes: number // 导师反思轮询间隔（分钟, 1-240, 默认 10）
+}
+
+export type TutorMode = 'off' | 'idle' | 'learning' | 'non-learning' | 'break'
+
+export interface TutorTodayStat {
+  focusMs: number // 今日学习时长
+  devMs: number // 今日分心时长
+  interruptCount: number // 今日被打断次数
+}
+
+export interface TutorStatus {
+  enabled: boolean
+  mode: TutorMode
+  goal: string
+  currentApp: string
+  currentTitle: string
+  deviationSince: number | null // 本轮分心开始时间
+  breakUntil: number | null
+  today: TutorTodayStat
+  alertOpen: boolean
+}
+
+export interface TutorEvent {
+  id: number
+  ts: number
+  type: string // interrupt | gentle | break | snooze | back_to_study | false_positive
+  appName: string | null
+  title: string | null
+  detail: string | null
+}
+
+export interface TutorAlertPayload {
+  goal: string
+  appName: string
+  title: string
+  devMinutes: number
+  nudge: string
+  breakMinutes: number
+  soundEnabled: boolean
+}
+
 export interface AppSettings {
   ai: AIConfig
   capture: CaptureConfig
   storage: StorageConfig
   general: GeneralConfig
+  tutor: TutorConfig
 }
 
 export interface TimelineCategory {

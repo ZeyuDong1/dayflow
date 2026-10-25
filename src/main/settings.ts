@@ -62,6 +62,17 @@ export const defaultSettings: AppSettings = {
     launchAtLogin: false,
     outputLanguage: '中文',
     userName: ''
+  },
+  tutor: {
+    enabled: false,
+    goal: '',
+    allowedProjectIds: [],
+    gentleSec: 60, // 分心 1 分钟先发桌面轻提醒
+    interruptSec: 180, // 分心 3 分钟置顶弹窗强打断
+    repeatSec: 600, // 持续分心每 10 分钟再打断一次
+    breakMinutes: 10,
+    soundEnabled: true,
+    reflectMinutes: 10 // 导师反思轮询间隔（可自定义 1-240 分钟）
   }
 }
 
