@@ -51,20 +51,28 @@ Dayflow for Windows 是被动记录型工作日志（自动追踪窗口活动 �
 - **范围**：完整功能获取 + 重实现，"只要功能都对其他无所谓"（2026-10-25 对话原话）。
 - **实现自由度**：技术栈、代码组织、视觉表现全部由建造者决定；功能正确性是唯一硬标准。
 - **开发方式**：superpowers 工作流（brainstorming → writing-plans → 执行），工作在 `feat/epochtodo-integration` 分支进行。
+- **2026-10-25 审阅裁决**（详见功能清单〔用户决定〕标注，覆盖助手原方案）：
+  1. Dayflow 的"任务"定义改称**"类型"**、"项目树"改称**"类型树"**；"任务/项目"二词专指 EpochToDo 概念。
+  2. 任务项目与类型树**互相独立**（两码事，不合并）。
+  3. 专注计时与活动追踪**互不交叉**，各按原始设计工作。
+  4. Reminder/Overlay 与学习监督强打断**独立共存**（监督=阻止玩乐，Reminder=重要提醒）；webhook AI（外部 agent 消息）与 Dayflow 内部 AI **各走各的**。
+  5. **移除模块**：GPU 排程、跨应用分发、EpochToDo 独立时间轴/项目页/Dashboard（功能清单附 D）。
+  6. 时间轴改为**右侧任务窄条 + AI 截图合规比例**（条上无字、点击看详情），见功能清单第九节。
+  7. 设置归并 Dayflow 设置页；托盘使用 Dayflow 的。
 
 ## 5. 架构决策（均为建造者/助手的决定，非用户指定）
 
-### A. 任务与时间轴的双概念并存（不强行合并）
+### A. 双任务体系 + 术语改名（按用户裁决）
 
-Dayflow 已有 `task_activities`（手动计时工作段：起止时间/标题/备注/项目/计费），EpochToDo 的"任务"是带状态机的待办树（嵌套/优先级/归档）。二者语义不同，**并存为两个实体**：
+Dayflow 的 `task_activities`（手动计时工作段）与 EpochToDo 任务树语义不同，**并存为两个实体**：
 
-- EpochToDo 任务树 → 新表 `tasks`（parent_id、status、bang、side_focus 等），是新"专注"模块的主数据；
-- `task_activities` 原样保留，Dayflow 现有计时/账单行为不动。
-- 两者的"项目"统一指向 Dayflow 项目树（`projects` 表）：EpochToDo 完成任务时的强制选项目、项目归档等行为在 Dayflow 项目树上实现；EpochToDo 项目若有 Dayflow 缺的字段，扩展 `projects` 表补足。
+- EpochToDo 任务树 → 新表 `tasks`（parent_id、status、bang、side_focus 等），是新"任务"模块的主数据；
+- `task_activities` 行为原样保留，但定义与界面文案改称**"类型"**；Dayflow 项目树改称**"类型树"**（内部表名/代码标识可保留，UI 与文档统一新术语）。
+- **任务项目独立于类型树**（用户裁决）：新建轻量 `task_projects` 表（名称/颜色）；完成任务强制选项目从该列表选；管理轻量化（选择器内联新建 + 任务页简单改名/换色/删除），不做 EpochToDo 式项目看板。
 
-### B. 时间轴呈现
+### B. 时间轴呈现（按用户裁决：任务窄条 + 合规比例）
 
-EpochToDo 的"专注会话历史"作为 Dayflow 时间轴上的**独立泳道/图层**（数据源 = 专注会话，不参与活动段 LLM 归类），保留其"一天专注史"视图功能；活动时间轴 LOD 与几何规则不动。
+专注会话归并到 Dayflow 时间轴：右侧紧贴一条**窄竖条**展示任务占用（每会话一色块、高按时长、颜色=任务项目色、条上不写字）；点击色块弹详情（任务名/起止/时长/合规比例/证据）。合规比例 = 会话区间截图样本中"在执行该任务"的占比（复用截图管线与 providers，结果缓存入库、惰性触发）；无截图则只显示占用。活动时间轴 LOD 与几何规则不动；专注会话与活动段数据互不交叉。
 
 ### C. 技术栈重映射表
 
@@ -82,8 +90,8 @@ EpochToDo 的"专注会话历史"作为 Dayflow 时间轴上的**独立泳道/�
 
 - **Spotlight**：全局热键 `Alt+Space`（globalShortcut），独立无边框窗口；命令文法、时间解析（`30m/1h/45s`）、Tab/Shift+Tab 缩进保持输入焦点、右键菜单、Quick Countdown Picker 原语义重实现。
 - **Overlay**：置顶透明工具窗，显示当前焦点/副焦点行/等待倒计时/训练卡/AI 软提醒卡行；呼吸光晕 + 跑马灯动画（各自开关/强度/速度，设置页实时预览）；保存 bounds 经多显示器校验（v1.4.2 语义）。
-- **Reminder**：硬提醒（到期 nagging、review 类）独立小窗，与 Dayflow 学习监督的 `InterruptOverlay` 并存但 UI 组件可复用。
-- 与托盘/菜单共存：Dayflow `tray.ts`、`menu.ts` 扩展，不替换。
+- **Reminder**：硬提醒（到期 nagging、review 类）独立小窗；与学习监督 `InterruptOverlay` **独立共存、不统一通道**（用户裁决：监督=阻止玩乐的强打断，Reminder=重要提醒），UI 组件可复用但行为各走各的。
+- 托盘**使用 Dayflow 的**（用户裁决）：`tray.ts` 菜单扩展（如 Re-assert Overlay Topmost），不另建。
 
 ### E. 时钟与计时引擎
 
@@ -91,7 +99,7 @@ TimerManager（focus/wait/adhoc/training 四类计时、并发规则、到期 na
 
 ### F. webhook 与 AI 提醒
 
-`src/main/server.ts`（新增）监听 62222：路由、UTF-8 解码、`kind:"ai"` status→卡片映射（info/progress/failure 软卡；needs_input/review 走硬提醒/可操作通道）、`ai-dismiss` 匹配与 `force` 语义、内存态卡片生命周期、跨窗口广播（主进程内存持有 + 推送到各窗口）——全部按语义规格逐条对齐。AI 软提醒与 Dayflow 现有 ai-memory 侧车互不干扰（不同端口）。
+`src/main/server.ts`（新增）监听 62222：路由、UTF-8 解码、`kind:"ai"` status→卡片映射（info/progress/failure 软卡；needs_input/review 走硬提醒/可操作通道）、`ai-dismiss` 匹配与 `force` 语义、内存态卡片生命周期、跨窗口广播（主进程内存持有 + 推送到各窗口）——全部按语义规格逐条对齐。〔用户裁决〕webhook 通道收**外部 agent** 递来的消息（如 hermes 的"GPU 空闲"通知），与 Dayflow 内部 AI（ai-memory 侧车/导师）**各走各的**，语义无需统一；端口不同（62222 vs AI_MEMORY_BIND）互不干扰。
 
 ### G. mdSync
 
@@ -101,13 +109,9 @@ TimerManager（focus/wait/adhoc/training 四类计时、并发规则、到期 na
 
 GraphQL 轮询 + webhook 训练更新去重规则原样；GPU 卡字段（cfg name、ETA、epoch 进度、hostname、GPU 型号、wandb 链接）与 Overlay 训练行原样。Spotlight 任务树对训练/监控任务隐藏的 decluttering 规则原样。
 
-### H2. GPU 排程子系统（Scheduler）
+### H2/H3. 已移除模块（用户裁决）
 
-独立于计时的排程功能（scheduler_gpus/scheduler_tasks/scheduler_assignments 三表 + 冲突检测：区间相交抛 `Time slot conflict detected`；assignment 生命周期与 task 状态 pending→scheduled 联动）原样重实现，落 dayflow.db 新表；UI 挂在任务/专注模块下的 GPU 排程页。语义规格 §1.2 的字段与状态枚举为准。
-
-### H3. 跨应用分发（Dispatch）
-
-"把任务分发到外部应用窗口"（识别前台窗 → `dispatched_target` 记忆 JSON → 剪贴板粘贴标题，last-dispatch-wins）原样重实现；识别前台窗改走 `foreground.ts` koffi FFI（替换 active-win，语义规格 §10 `task:identify-target` 的 150ms 延迟保留）。**self-dispatch guard**：分发目标是本应用自身窗口时返回 `{ok:false,error:'self-window'}` 且不记应用关联——"自身"判定用 koffi 取到的进程 PID 对比本进程，而非 active-win 的语义。
+**GPU 排程子系统（Scheduler）**与**跨应用分发（Dispatch）**整体不做：不建 scheduler_* 三表、不做排程页、不做 `dispatched_target`/self-dispatch guard/模拟粘贴（active-win 问题随之消失）。完整移除清单见功能清单附 D。
 
 ### H4. 系统设置杂项
 
@@ -130,11 +134,11 @@ GraphQL 轮询 + webhook 训练更新去重规则原样；GPU 卡字段（cfg na
 
 ## 7. 实施分期概要（供 writing-plans 展开）
 
-1. **P1 数据与引擎**：schema 扩展（tasks/focus_sessions/计时/提醒）、TimerManager、纯逻辑模块 + 测试骨架（vitest 引入）。
-2. **P2 协议层**：webhook 服务器（62222 全路由）、AI 提醒路由/ai-dismiss、跨窗口广播。
+1. **P1 数据与引擎**：schema 扩展（tasks/task_projects/timers/history/提醒/合规分析缓存）、TimerManager、纯逻辑模块 + 测试骨架（vitest 引入）。
+2. **P2 协议层**：webhook 服务器（62222 全路由 + 桌宠桥）、AI 提醒路由/ai-dismiss、跨窗口广播。
 3. **P3 窗口层**：Spotlight → Overlay → Reminder（含全局热键、bounds 校验、动画设置）。
-4. **P4 同步与集成**：mdSync、wandb/GPU 卡、GPU 排程子系统、跨应用分发、VS Code 插件验证。
-5. **P5 界面收尾**：任务中心页（Dashboard 等价物）、设置页新 tab（含热键/自启/导入导出）、时间轴专注泳道、项目树整合行为。
+4. **P4 同步与集成**：mdSync、wandb/GPU 卡、VS Code 插件验证。
+5. **P5 界面收尾**：任务页（任务树/队列/GPU 卡/AI 卡/软提醒横幅/轻量项目管理）、设置页新 tab（含热键/自启/导入导出）、**时间轴任务窄条 + 合规比例分析**、术语改名（类型/类型树）。
 6. **P6 验收**：功能清单逐条走查、协议 curl 验证、Dayflow 回归、测试迁移补全、AGENTS.md/文档更新。
 
 每期结束跑 `npm run typecheck` + 相应自测；P1 起每期配纯逻辑测试。
@@ -143,8 +147,6 @@ GraphQL 轮询 + webhook 训练更新去重规则原样；GPU 卡字段（cfg na
 
 全新子代理以"拿本文档制定实施计划"视角通读设计文档与两份附件（并对照 EpochToDo 源码与 Dayflow 现状）。结论：除下述 1 个问题外，其余岔路均可由本文档取舍规则（行为语义以附件为准、实现选型以本文档为准、精确行为以源码为准）直接定夺——包括：外部集成件归属、协议英文串与"UI 全部中文"的边界（行为串逐字保留、界面文案中文化）、导出/导入/清空的作用域（文件级 .db 语义 + deleteAllTasks 清理语义）、确认词（`strict` 等以源码为准）。
 
-### 开放问题 1（只有用户能答）："时间轴证据反哺任务回顾"是否在交付范围内？
+### 开放问题 1 —— 已由用户裁决（2026-10-25）
 
-- 来源：本文档 §1 原有意图表述与 §2 目标/§5I 验收（= 功能清单对齐 + Dayflow 不退化 + 协议兼容）口径不一致；两份功能附件均无"反哺"行为规格。
-- 若"需要"：每日站会/周报/整理/对话查询要消费专注会话与任务状态（改动 `ai/analyze`、`standup`、`weekly`、`chat` 的输入构造与 prompt，可能新增证据关联视图），并要划清与决策 B"专注会话不参与归类"的边界——独立且不小的工作包，P5/P6 范围与验收面随之扩大。
-- **助手推荐并默认采用 (a)**：不做额外集成，功能清单 + 专注泳道即为全部交付——与用户"只要功能都对"的验收口径一致；(b) 如需，作为后续独立需求另行立项。用户批准本文档即视为采纳 (a)。
+用户给出 (b) 的具体形态：不做通用"反哺"，而是**时间轴任务窄条 + AI 截图合规比例**（功能清单第九节）——这是唯一的闭环要求，已纳入 P5；§1 意图口径以功能清单第九节为准。设计文档经用户审阅裁决后获批，进入 writing-plans。
