@@ -48,7 +48,9 @@ const server = http.createServer((req, res) => {
     log(`  anthropic=${isAnthropic} stream=${isStream} frames=${labels.length} images=${imgCount} bytes=${raw.length}`)
 
     let text
-    const promptText = JSON.stringify(body ?? {}).slice(0, 4000)
+    const promptText = JSON.stringify(body ?? {}).slice(0, 15000)
+    log(`  head=${promptText.slice(0, 160).replace(/\n/g, ' ')}`)
+    log(`  persona=${/你是「小舟」/.test(promptText)} digest=${/专业知识底座/.test(promptText)} standup=${/standup/i.test(promptText)}`)
     if (labels.length >= 2) {
       // Timeline analysis: one card covering first..last+1min.
       const start = labels[0]
@@ -80,8 +82,11 @@ const server = http.createServer((req, res) => {
       })
     } else {
       text = 'Mock provider reply: connection successful.'
-      // e2e 断言辅助:导师人格 prompt 到达时,回复附带 MEMO 行,
-      // 用于验证"人格注入 + MEMO 记忆回收"闭环。
+      // e2e 断言辅助:标记各占独立行(stripMemoLine 按行剥 MEMO,不能同行拼接)。
+      // persona 到达 → MEMO 行(验证记忆回收);专业知识底座到达 → KNOW-OK 行。
+      if (/专业知识底座/.test(promptText)) {
+        text += '\nKNOW-OK'
+      }
       if (/你是「小舟」/.test(promptText)) {
         text += '\nMEMO: e2e记忆回收验证:用户目标是学好 TypeScript 泛型'
       }

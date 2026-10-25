@@ -14,6 +14,7 @@ import {
 import { startPipeline, stopPipeline, onCardsChanged } from './ai/analyze'
 import { startMemoryServer, stopMemoryServer } from './memory/sidecar'
 import { bootstrapMemory } from './memory/client'
+import { seedKnowledge } from './ai/knowledge'
 import { supervisionSync, stopSupervision } from './supervision'
 import { startReflectionLoop, stopReflectionLoop } from './ai/reflect-tick'
 import { startCleanupSchedule, stopCleanupSchedule } from './cleanup'
@@ -138,10 +139,11 @@ if (!gotLock) {
     applyLoginItem()
     updateTray(showMainWindow)
 
-    // 记忆侧车(ai-memory) + 导师反思循环 + 学习监督。
+    // 记忆侧车(ai-memory) + 知识库种子 + 导师反思循环 + 学习监督。
     void startMemoryServer().then(async (ok) => {
       if (!ok) return
       await bootstrapMemory(getSettings().tutor.goal)
+      await seedKnowledge()
       startReflectionLoop()
     })
     supervisionSync()

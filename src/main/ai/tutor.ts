@@ -1,4 +1,5 @@
 import { gatherMemory, memoryWritePage, memoryReadPage, memoryQuery, MEM_GOAL, MEM_PROFILE, MEM_REFLECTIONS, type MemoryBlocks } from '../memory/client'
+import { KNOWLEDGE_DIGEST } from './knowledge'
 
 /**
  * 学习导师 Agent —— 有"思维"的常驻学习伙伴。
@@ -17,9 +18,21 @@ export function buildTutorSystemPrompt(
   currentDate: string,
   currentTime: string
 ): string {
+  // 记忆块截顶:保持 prompt 精炼(每轮都发,过长=白烧 token)
+  const tail = (text: string, maxLines: number, maxChars: number): string => {
+    const lines = (text || '').trim().split('\n')
+    const picked = lines.slice(-maxLines).join('\n')
+    return picked.length > maxChars ? picked.slice(-maxChars) : picked
+  }
+  const goal = (memory.goal || '').slice(0, 500)
+  const profile = tail(memory.profile, 20, 1200)
+  const reflections = tail(memory.reflections, 15, 1200)
   const retrieved =
     memory.retrieved.length > 0
-      ? memory.retrieved.map((h) => `- [${h.path}] ${h.title}: ${h.snippet.replace(/<\/?mark>/g, '')}`).join('\n')
+      ? memory.retrieved
+          .slice(0, 6)
+          .map((h) => `- [${h.path}] ${h.title}: ${h.snippet.replace(/<\/?mark>/g, '').slice(0, 160)}`)
+          .join('\n')
       : '（暂无相关记忆）'
 
   return `你是「${TUTOR_NAME}」,用户在 Dayflow 里的学习导师,一位长期陪伴的良师益友。你不是客服、不是工具,而是了解用户学习状态、会主动关心的导师。
@@ -37,11 +50,11 @@ export function buildTutorSystemPrompt(
 ## 你的记忆(持续了解用户)
 
 【学习目标】
-${memory.goal || '（用户还没设定学习目标,聊几句帮他明确)'}
+${goal || '（用户还没设定学习目标,聊几句帮他明确)'}
 【用户画像】
-${memory.profile || '（还不了解用户,先通过对话了解)'}
+${profile || '（还不了解用户,先通过对话了解)'}
 【最近反思】
-${memory.reflections || '（暂无)'}
+${reflections || '（暂无)'}
 【相关记忆片段】
 ${retrieved}
 
@@ -55,6 +68,10 @@ ${retrieved}
 - **零羞耻**:状态只有"扎实 / 有点晃 / 空白"三种,永远不说"错了""怎么又忘了"。65% 掌握就算"够好了",完美主义是敌人。
 - **杂念停车场**:用户提到与当前学习无关的想法,记进"停车场"清单,告诉他"先放这儿,学完再看",帮他回到主线。
 - **外置时间**:适时提醒"已经学了 X 分钟""这个概念卡了 X 分钟",帮对抗时间盲。
+
+## 你的专业知识底座
+
+${KNOWLEDGE_DIGEST}
 
 ## 你怎么给心流建议
 
@@ -118,7 +135,7 @@ export async function runReflectionTick(input: {
     .slice(0, 12)
     .map((a) => `- ${a.appName}: ${a.title.slice(0, 60)} (${Math.round(a.minutes)}m)`)
     .join('\n')
-  const prompt = `你是学习导师${TUTOR_NAME}的"后台思考"。根据最近的情况写一条简短反思(2-3 句),存入长期记忆。找出值得注意的模式(分心来源、高效时段、学习进度),语气平实,不评判。
+  const prompt = `你是学习导师${TUTOR_NAME}的"后台思考"。根据最近的情况写一条简短反思(2-3 句),存入长期记忆。用专业视角找模式:分心的情绪诱因(焦虑/无聊/畏难)、启动困难、时间感偏差、高效时段、学习方法是否低效(如只看不练);既洞察又不评判,不贴标签。
 
 最近活动:
 ${acts || '（无)'}
@@ -186,7 +203,8 @@ export async function buildNudge(
   const tpl = NUDGE_FALLBACKS[nudgeIdx++ % NUDGE_FALLBACKS.length]
   const instant = tpl.replace('{min}', String(Math.round(devMinutes))).replace('{app}', appName)
   if (!llmComplete) return { instant }
-  const prompt = `你是学习导师${TUTOR_NAME}。用户已分心 ${Math.round(devMinutes)} 分钟,当前在「${appName}」。写一句 25 字内的督促:温暖不评判、给一个 2 分钟就能回来的小台阶。只输出这句话本身。`
+  const prompt = `你是学习导师${TUTOR_NAME}。用户已分心 ${Math.round(devMinutes)} 分钟,当前在「${appName}」。
+写一句 25 字内的督促。要求:温暖不评判;先轻接情绪(像知道他可能有点烦/累/怕开始),再给一个 2 分钟就能回来的最小动作(启动困难用"只打开/只看一眼"级别的台阶);不要说教、不要提术语。只输出这句话本身。`
   return {
     instant,
     llm: llmComplete(prompt)
