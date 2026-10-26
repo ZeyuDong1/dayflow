@@ -4,6 +4,8 @@ import React, { useEffect, useState } from 'react'
 export default function TodoSettingsPanel() {
   const [s, setS] = useState<Record<string, unknown> | null>(null)
   const [msg, setMsg] = useState('')
+  const [recording, setRecording] = useState(false)
+  const [clearValue, setClearValue] = useState('')
   const [mdStatus, setMdStatus] = useState<{
     enabled: boolean
     folder: string
@@ -16,13 +18,29 @@ export default function TodoSettingsPanel() {
     void window.dayflow.todo.mdSync.getStatus().then(setMdStatus)
   }, [])
   const loadMd = () => void window.dayflow.todo.mdSync.getStatus().then(setMdStatus)
+  const [mdPreview, setMdPreview] = useState<string | null>(null)
   const pickFolder = async () => {
     const folder = await window.dayflow.todo.mdSync.selectFolder()
     if (!folder) return
+    const info = await window.dayflow.todo.mdSync.checkFile(folder)
+    if (info.exists && info.titles.length > 0) {
+      const dups = await window.dayflow.todo.mdSync.checkDuplicates(info.titles)
+      if (dups.length > 0 && !window.confirm(`发现 ${dups.length} 个同名任务（${dups.slice(0, 3).join('、')}…），启用后这些行将按重名跳过。继续启用吗？`)) {
+        return
+      }
+    }
     await window.dayflow.todo.mdSync.setConfig(true, folder)
     setMsg('已启用 MD 同步')
     loadMd()
     setTimeout(() => setMsg(''), 1500)
+  }
+  const togglePreview = async () => {
+    if (mdPreview != null) {
+      setMdPreview(null)
+      return
+    }
+    const st = await window.dayflow.todo.mdSync.getStatus()
+    setMdPreview(st.filePath ? await window.dayflow.todo.mdSync.readFile(st.filePath) : '')
   }
   const toggleMd = async () => {
     if (!mdStatus) return
@@ -56,9 +74,36 @@ export default function TodoSettingsPanel() {
         <div className="settings-row">
           <div>
             <div className="settings-row-label">Spotlight 激活键</div>
-            <div className="settings-row-help">全局命令栏热键（自定义改键后续版本提供）</div>
+            <div className="settings-row-help">全局命令栏热键，点击录制后按下新组合键（Esc 取消）</div>
           </div>
-          <div>Alt + Space</div>
+          {recording ? (
+            <input
+              autoFocus
+              readOnly
+              className="tp-mini"
+              placeholder="按下组合键…"
+              onKeyDown={(e) => {
+                e.preventDefault()
+                if (e.key === 'Escape') {
+                  setRecording(false)
+                  return
+                }
+                if (['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) return
+                const mods = [e.ctrlKey && 'Ctrl', e.altKey && 'Alt', e.shiftKey && 'Shift', e.metaKey && 'Super'].filter(Boolean)
+                if (mods.length === 0) return // 必须带修饰键
+                const acc = [...mods, e.key === ' ' ? 'Space' : e.key].join('+')
+                void window.dayflow.todo.setShortcut(acc).then((ok) => {
+                  setMsg(ok ? `热键已设置为 ${acc}` : '注册失败（可能被其他软件占用）')
+                  setRecording(false)
+                  setTimeout(() => setMsg(''), 2500)
+                })
+              }}
+            />
+          ) : (
+            <button className="btn small" onClick={() => setRecording(true)}>
+              录制
+            </button>
+          )}
         </div>
         <div className="settings-row">
           <div>
@@ -333,6 +378,76 @@ export default function TodoSettingsPanel() {
           <button className="btn small" onClick={() => void syncNow()} disabled={!mdStatus?.folder}>
             立即同步
           </button>
+          <button className="btn small ghost" onClick={() => void togglePreview()}>
+            {mdPreview == null ? '预览文件' : '收起预览'}
+          </button>
+        </div>
+        {mdPreview != null && (
+          <pre style={{ maxHeight: 180, overflow: 'auto', background: 'var(--inset)', padding: 8, borderRadius: 8, fontSize: 12 }}>{mdPreview || '（空文件）'}</pre>
+        )}
+      </div>
+      <div className="panel">
+        <div className="panel-title">数据（任务域）</div>
+        <div className="settings-row">
+          <div>
+            <div className="settings-row-label">导出数据</div>
+            <div className="settings-row-help">任务域数据库另存为 .db 备份</div>
+          </div>
+          <button
+            className="btn small"
+            onClick={() =>
+              void window.dayflow.todo.exportData().then((r) => {
+                setMsg(r ? `已导出到 ${r.path}` : '已取消')
+                setTimeout(() => setMsg(''), 3000)
+              })
+            }
+          >
+            导出
+          </button>
+        </div>
+        <div className="settings-row">
+          <div>
+            <div className="settings-row-label">导入数据</div>
+            <div className="settings-row-help">选择 .db 覆盖（导入前自动备份旧库，需重启生效）</div>
+          </div>
+          <button
+            className="btn small"
+            onClick={() =>
+              void window.dayflow.todo.importData().then((r) => {
+                setMsg(r ? '已导入，请重启应用生效' : '已取消')
+                setTimeout(() => setMsg(''), 4000)
+              })
+            }
+          >
+            导入
+          </button>
+        </div>
+        <div className="settings-row">
+          <div>
+            <div className="settings-row-label">清空任务数据</div>
+            <div className="settings-row-help">删除全部任务/计时/历史，不可恢复（输入 strict 确认）</div>
+          </div>
+          <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <input
+              style={{ width: 90 }}
+              placeholder="strict"
+              value={clearValue}
+              onChange={(e) => setClearValue(e.target.value)}
+            />
+            <button
+              className="btn small danger"
+              disabled={clearValue !== 'strict'}
+              onClick={() => {
+                void window.dayflow.todo.clearData().then(() => {
+                  setClearValue('')
+                  setMsg('任务数据已清空')
+                  setTimeout(() => setMsg(''), 2000)
+                })
+              }}
+            >
+              清空
+            </button>
+          </span>
         </div>
       </div>
       {msg && <div className="settings-row-help">{msg}</div>}

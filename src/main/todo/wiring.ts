@@ -5,6 +5,7 @@
  */
 import { app, BrowserWindow, Dialog, Notification, ipcMain, dialog, shell } from 'electron'
 import { db } from '../db'
+import { getDbPath } from '../paths'
 import { TaskService } from './service'
 import { GpuService } from './gpu-service'
 import { TimerManager } from './timer-manager'
@@ -17,6 +18,7 @@ import {
   setDraftCleanup,
   toggleSpotlight,
   hideSpotlight,
+  ensureSpotlightWindow,
   registerSpotlightShortcut,
   unregisterShortcuts,
 } from './spotlight-window'
@@ -164,6 +166,11 @@ export function createTodoRuntime(opts: { port?: number } = {}): TodoRuntime {
       return next
     },
     wandbUpdate: () => wandbBridge.update(),
+    setShortcut: (accelerator: string) => {
+      const ok = registerSpotlightShortcut(accelerator, toggleSpotlight)
+      if (ok) saveTodoSettings(db, { global_shortcut: accelerator })
+      return ok
+    },
     openExternal: (url: string) => {
       if (/^https?:\/\//.test(url)) void shell.openExternal(url)
     },
@@ -178,6 +185,35 @@ export function createTodoRuntime(opts: { port?: number } = {}): TodoRuntime {
     sessionAnalyses,
     analyzeDay,
     mdSync,
+    data: {
+      async exportData() {
+        const r = await dialog.showSaveDialog({
+          defaultPath: `dayflow-backup-${new Date().toISOString().slice(0, 10)}.db`,
+          filters: [{ name: 'SQLite', extensions: ['db'] }],
+        })
+        if (r.canceled || !r.filePath) return null
+        db.flush()
+        fs.copyFileSync(getDbPath(), r.filePath)
+        return { path: r.filePath }
+      },
+      async importData() {
+        const r = await dialog.showOpenDialog({
+          properties: ['openFile'],
+          filters: [{ name: 'SQLite', extensions: ['db'] }],
+        })
+        if (r.canceled || !r.filePaths[0]) return null
+        db.flush()
+        const target = getDbPath()
+        fs.copyFileSync(target, `${target}-backup-${Date.now()}.db`) // 导入前自动备份
+        fs.copyFileSync(r.filePaths[0], target)
+        return { needsRestart: true }
+      },
+      clearTodoData() {
+        timerManager.cancelAll()
+        tasks.deleteAllTasks()
+        broadcast({ type: 'fetch-tasks' })
+      },
+    },
   }
   setDraftCleanup(() => {
     cleanupDraftTasks(tasks.getAllTasks(), (id) => tasks.deleteTask(id))
@@ -238,7 +274,8 @@ export function createTodoRuntime(opts: { port?: number } = {}): TodoRuntime {
     server,
     async start() {
       timerManager.start()
-      if (!registerSpotlightShortcut('Alt+Space', toggleSpotlight)) {
+      ensureSpotlightWindow() // 预建隐藏窗：软提醒等事件从开机起不丢
+      if (!registerSpotlightShortcut(getSettings().global_shortcut || 'Alt+Space', toggleSpotlight)) {
         console.error('[todo] Alt+Space 全局热键注册失败（可能被其他软件占用）')
       }
       showOverlayWindow(getSettings())

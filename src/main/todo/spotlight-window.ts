@@ -9,6 +9,7 @@ const W = 800
 const H = 600
 
 let win: BrowserWindow | null = null
+let showOnReady = false
 let draftCleanup: (() => void) | null = null
 
 export function setDraftCleanup(fn: () => void): void {
@@ -33,6 +34,18 @@ export function showSpotlight(): void {
     win.focus()
     return
   }
+  ensureSpotlightWindow()
+  showOnReady = true
+  centerOnCursorDisplay(win!)
+  win!.once('ready-to-show', () => {
+    if (win && !win.isDestroyed()) win.show()
+  })
+}
+
+/** 启动即预建隐藏窗（原版行为）：保证 AI 软提醒等事件从开机起就不丢。 */
+export function ensureSpotlightWindow(): void {
+  if (win && !win.isDestroyed()) return
+  showOnReady = false
   win = new BrowserWindow({
     width: W,
     height: H,
@@ -61,7 +74,7 @@ export function showSpotlight(): void {
     void win.loadFile(path.join(__dirname, '../renderer/index.html'), { hash: '/spotlight' })
   }
   win.once('ready-to-show', () => {
-    if (win && !win.isDestroyed()) win.show()
+    if (win && !win.isDestroyed() && showOnReady) win.show()
   })
 }
 

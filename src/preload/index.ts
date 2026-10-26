@@ -332,6 +332,10 @@ const api = {
       ipcRenderer.invoke('todo:open-external', url)
     },
     trainingStatus: (): Promise<unknown[]> => ipcRenderer.invoke('todo:training-status'),
+    setShortcut: (accelerator: string): Promise<boolean> => ipcRenderer.invoke('todo:set-shortcut', accelerator),
+    exportData: (): Promise<{ path: string } | null> => ipcRenderer.invoke('todo:export-data'),
+    importData: (): Promise<{ needsRestart: boolean } | null> => ipcRenderer.invoke('todo:import-data'),
+    clearData: (): Promise<boolean> => ipcRenderer.invoke('todo:clear-data'),
     mdSync: {
       selectFolder: (): Promise<string | null> => ipcRenderer.invoke('md-sync:select-folder'),
       setConfig: (enabled: boolean, folder: string): Promise<void> =>

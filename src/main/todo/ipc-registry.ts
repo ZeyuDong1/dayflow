@@ -39,8 +39,14 @@ export interface TodoIpcDeps {
   wandbUpdate?: () => void
   wandbTest?: (entity: string, apiKey: string) => Promise<{ valid: boolean; projectCount: number; hostname: string; error?: string }>
   openExternal?: (url: string) => void
+  setShortcut?: (accelerator: string) => boolean
   trainingStatusSnapshot?: () => unknown[]
   broadcastAiDismissed?: (payload: { id?: string; source?: string; title?: string }) => void
+  data?: {
+    exportData(): Promise<{ path: string } | null>
+    importData(): Promise<{ needsRestart: boolean } | null>
+    clearTodoData(): void
+  }
   mdSync?: {
     selectFolder(): Promise<string | null>
     setConfig(enabled: boolean, folder: string): Promise<void>
@@ -149,6 +155,10 @@ export function registerTodoIpc(reg: IpcRegistry, deps: TodoIpcDeps): void {
   }) as never)
   reg.handle('todo:open-external', ((_e: never, url: string) => deps.openExternal?.(url)) as never)
   reg.handle('todo:training-status', (() => deps.trainingStatusSnapshot?.() ?? []) as never)
+  reg.handle(
+    'todo:set-shortcut',
+    ((_e: never, accelerator: string) => deps.setShortcut?.(accelerator) ?? false) as never,
+  )
 
   // GPU 域
   reg.handle('todo:get-gpus', (() => gpus.getAllGpus()) as never)
@@ -213,6 +223,14 @@ export function registerTodoIpc(reg: IpcRegistry, deps: TodoIpcDeps): void {
     ((_e: never, titles: string[]) => deps.mdSync?.checkDuplicates(titles) ?? Promise.resolve([])) as never,
   )
   reg.handle('md-sync:read-file', ((_e: never, filePath: string) => deps.mdSync?.readFile(filePath) ?? Promise.resolve('')) as never)
+
+  // 数据域（§十四：导出/导入 .db + 清空任务数据）
+  reg.handle('todo:export-data', (() => deps.data?.exportData() ?? Promise.resolve(null)) as never)
+  reg.handle('todo:import-data', (() => deps.data?.importData() ?? Promise.resolve(null)) as never)
+  reg.handle('todo:clear-data', (() => {
+    deps.data?.clearTodoData()
+    return true
+  }) as never)
   reg.on('todo:reminder-snooze', ((_e: never, taskId: number, minutes: number) => {
     timerManager.snoozeTrainingReminder(taskId, minutes)
     deps.hideReminder?.()

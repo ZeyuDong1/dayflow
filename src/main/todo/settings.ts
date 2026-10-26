@@ -38,6 +38,7 @@ export interface TodoSettings {
   wandb_entity: string
   md_sync_enabled: boolean
   md_sync_folder: string
+  global_shortcut: string
 }
 
 export type DeepPartial<T> = { [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K] }
@@ -66,6 +67,7 @@ export const DEFAULT_TODO_SETTINGS: TodoSettings = {
   wandb_entity: '',
   md_sync_enabled: false,
   md_sync_folder: '',
+  global_shortcut: 'Alt+Space',
 }
 
 export const TODO_SETTINGS_KEY = 'todo-settings'
@@ -144,6 +146,7 @@ export function getTodoSettings(db: TodoDB): TodoSettings {
     wandb_entity: typeof raw.wandb_entity === 'string' ? raw.wandb_entity : DEFAULT_TODO_SETTINGS.wandb_entity,
     md_sync_enabled: typeof raw.md_sync_enabled === 'boolean' ? raw.md_sync_enabled : DEFAULT_TODO_SETTINGS.md_sync_enabled,
     md_sync_folder: typeof raw.md_sync_folder === 'string' ? raw.md_sync_folder : DEFAULT_TODO_SETTINGS.md_sync_folder,
+    global_shortcut: typeof raw.global_shortcut === 'string' && raw.global_shortcut ? raw.global_shortcut : DEFAULT_TODO_SETTINGS.global_shortcut,
   }
 }
 
@@ -165,6 +168,7 @@ export function saveTodoSettings(db: TodoDB, patch: DeepPartial<TodoSettings>): 
     wandb_entity: patch.wandb_entity ?? current.wandb_entity,
     md_sync_enabled: patch.md_sync_enabled ?? current.md_sync_enabled,
     md_sync_folder: patch.md_sync_folder ?? current.md_sync_folder,
+    global_shortcut: patch.global_shortcut ?? current.global_shortcut,
   }
   db.run('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)', [
     TODO_SETTINGS_KEY,

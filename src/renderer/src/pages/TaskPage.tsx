@@ -20,6 +20,7 @@ interface AiCard {
   status: string
   detail?: string
   link?: string
+  ts: number
 }
 
 interface GpuCard extends GpuRow {
@@ -166,7 +167,7 @@ export default function TaskPage(): React.ReactElement {
           const r = e.reminder
           setAiCards((c) =>
             [
-              { id: r.id, source: r.source, title: r.title, status: r.status, detail: r.detail, link: r.link },
+              { id: r.id, source: r.source, title: r.title, status: r.status, detail: r.detail, link: r.link, ts: Date.now() },
               ...c
             ].slice(0, 20)
           )
@@ -443,6 +444,14 @@ export default function TaskPage(): React.ReactElement {
     },
     [gpuAssign, setAssign, refresh]
   )
+
+  function relativeTime(ts: number, _now?: number): string {
+    const diff = Math.max(0, Date.now() - ts)
+    if (diff < 60_000) return '刚刚'
+    if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m`
+    if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h`
+    return `${Math.floor(diff / 86_400_000)}d`
+  }
 
   // AI 提醒卡
   const promoteAi = useCallback(
@@ -903,10 +912,16 @@ export default function TaskPage(): React.ReactElement {
                     {AI_GLYPH[c.status] ?? 'i'}
                   </span>
                   <span className="tp-ai-body">
-                    <div className="tp-ai-text" title={`${c.source} · ${c.title}`}>
+                    <div
+                      className="tp-ai-text"
+                      title={`${c.source} · ${c.title}`}
+                      style={c.link ? { cursor: 'pointer', textDecoration: 'underline' } : undefined}
+                      onClick={() => c.link && window.dayflow.todo.openExternal(c.link)}
+                    >
                       {c.source} · {c.title}
                     </div>
                   </span>
+                  <span className="tp-dim">{relativeTime(c.ts, now)}</span>
                   <button className="tp-op-btn" title="转软提醒" onClick={() => promoteAi(c)}>
                     🔔
                   </button>
