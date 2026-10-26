@@ -56,6 +56,11 @@ export function showReminderWindow(): void {
     hasShadow: true,
     show: false,
     backgroundColor: '#00000000',
+    webPreferences: {
+      preload: path.join(__dirname, '../../preload/index.js'),
+      sandbox: false,
+      contextIsolation: true,
+    },
   })
   win.setAlwaysOnTop(true, 'screen-saver')
   centerOnCursorDisplay(win)

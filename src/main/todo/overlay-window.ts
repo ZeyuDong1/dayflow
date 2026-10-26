@@ -57,6 +57,11 @@ export function showOverlayWindow(settings: TodoSettings): void {
     hasShadow: false,
     show: false,
     backgroundColor: '#00000000',
+    webPreferences: {
+      preload: path.join(__dirname, '../../preload/index.js'),
+      sandbox: false,
+      contextIsolation: true,
+    },
   })
   win.setAlwaysOnTop(true, 'screen-saver')
   if (settings.overlay_settings.mouseIgnore) win.setIgnoreMouseEvents(true, { forward: true })

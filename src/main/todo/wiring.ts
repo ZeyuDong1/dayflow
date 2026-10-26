@@ -233,7 +233,9 @@ export function createTodoRuntime(opts: { port?: number } = {}): TodoRuntime {
     server,
     async start() {
       timerManager.start()
-      registerSpotlightShortcut('Alt+Space', toggleSpotlight) // 失败仅记日志
+      if (!registerSpotlightShortcut('Alt+Space', toggleSpotlight)) {
+        console.error('[todo] Alt+Space 全局热键注册失败（可能被其他软件占用）')
+      }
       showOverlayWindow(getSettings())
       {
         const st = getSettings()
