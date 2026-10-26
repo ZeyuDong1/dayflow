@@ -78,6 +78,12 @@ function linkifySegments(title: string): { text: string; url?: string }[] {
 }
 
 export default function SpotlightWindow() {
+  // 独立小窗路由：body 透明（窗口只显示圆角卡片本体）
+  useEffect(() => {
+    document.documentElement.style.background = 'transparent'
+    document.body.style.background = 'transparent'
+  }, [])
+
   const [tasks, setTasks] = useState<TaskRow[]>([])
   const [projects, setProjects] = useState<TaskProject[]>([])
   const [gpus, setGpus] = useState<GpuLite[]>([])

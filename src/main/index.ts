@@ -124,7 +124,7 @@ if (!gotLock) {
 
     mainWindow = createWindow()
     registerIpc(mainWindow)
-    const todoRuntime = createTodoRuntime()
+    const todoRuntime = createTodoRuntime({ port: process.env.DAYFLOW_TODO_PORT ? Number(process.env.DAYFLOW_TODO_PORT) : undefined })
     void todoRuntime.start()
     installAppMenu(() => mainWindow)
 

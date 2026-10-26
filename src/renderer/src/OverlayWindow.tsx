@@ -55,6 +55,12 @@ export default function OverlayWindow() {
   const [tsMap, setTsMap] = useState<Record<number, TrainingRec>>({})
   const titleRef = useRef<HTMLSpanElement>(null)
 
+  // 悬浮窗路由：body 必须透明（主应用全局样式给 body 设了奶油底，不重置=整窗不透明）
+  useEffect(() => {
+    document.documentElement.style.background = 'transparent'
+    document.body.style.background = 'transparent'
+  }, [])
+
   const refresh = useCallback(() => {
     void window.dayflow.todo.getTasks().then(setTasks)
     void window.dayflow.todo.trainingStatus().then((rows) => {

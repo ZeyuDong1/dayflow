@@ -93,7 +93,10 @@ export function showOverlayWindow(settings: TodoSettings): void {
     void win.loadFile(path.join(__dirname, '../renderer/index.html'), { hash: '/overlay' })
   }
   win.once('ready-to-show', () => {
-    if (win && !win.isDestroyed()) win.show()
+    if (win && !win.isDestroyed()) {
+      win.show()
+      if (settings.overlay_settings.mouseIgnore) win.setIgnoreMouseEvents(true, { forward: true }) // 就绪后重申穿透
+    }
   })
 }
 

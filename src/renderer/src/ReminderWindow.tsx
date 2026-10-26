@@ -64,6 +64,12 @@ function playArpeggio(): void {
 }
 
 export default function ReminderWindow() {
+  // 独立小窗路由：body 透明（窗口只显示圆角卡片本体）
+  useEffect(() => {
+    document.documentElement.style.background = 'transparent'
+    document.body.style.background = 'transparent'
+  }, [])
+
   const [items, setItems] = useState<ReminderItem[]>([])
   const [projects, setProjects] = useState<TaskProject[]>([])
   const [selecting, setSelecting] = useState(false)
