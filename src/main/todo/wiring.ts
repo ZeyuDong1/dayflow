@@ -105,6 +105,25 @@ export function createTodoRuntime(opts: { port?: number } = {}): TodoRuntime {
   const mdSyncService = new MdSyncService(db)
   const autoSync = new AutoSyncManager({ db, tasks, broadcast: broadcast as never })
 
+  // MD 实时同步(用户定:实时/双向/立即):所有任务增删改都经由这些服务方法,
+  // 包一层让每次变更立即触发 DB→MD 导出(autoSync 内部 300ms 防抖合并突发);
+  // mdSync 导入写库不走服务方法,不会形成回环
+  for (const m of [
+    'createTask',
+    'updateTask',
+    'deleteTask',
+    'deleteAllTasks',
+    'appendMemo',
+    'setSideFocus',
+  ] as const) {
+    const orig = (tasks[m] as (...a: unknown[]) => unknown).bind(tasks)
+    ;(tasks as unknown as Record<string, unknown>)[m] = (...a: unknown[]) => {
+      const r = orig(...a)
+      autoSync.triggerExport()
+      return r
+    }
+  }
+
   const mdSync = {
     removeTask(filePath: string, taskId: number): Promise<void> {
       return mdSyncService.removeTaskFromMd(filePath, taskId)

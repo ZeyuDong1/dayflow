@@ -8,8 +8,8 @@ import { MdSyncService, getEpochtodoPath } from './service'
 import type { TodoDB } from '../db'
 import type { TaskService } from '../service'
 
-export const FILE_DEBOUNCE_MS = 2000
-export const TASK_DEBOUNCE_MS = 500
+export const FILE_DEBOUNCE_MS = 800
+export const TASK_DEBOUNCE_MS = 300
 export const SUPPRESS_DELAY_MS = 1500
 export const POLL_MS = 3000
 
