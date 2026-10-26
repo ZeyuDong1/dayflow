@@ -75,16 +75,20 @@ export function showOverlayWindow(settings: TodoSettings): void {
     topmostInterval = null
   })
 
-  // 置顶维持：事件 + 每 30s 重申（审查重点#5：销毁后不抛错）
+  // 绝对置顶维持：事件 + 每 2s 强制提升(用户定:悬浮窗要绝对置顶)。
+  // 仅 setAlwaysOnTop 对已在顶带的窗口不改变 z 序——同级的 Spotlight/强打断
+  // 面板/其他置顶工具后显示就会压住它;moveTop 把它顶回顶带最上层,
+  // focusable:false 所以不会抢走任何焦点(审查重点#5:销毁后不抛错)。
   const reassert = () => {
-    if (win && !win.isDestroyed()) {
-      win.setAlwaysOnTop(true, 'screen-saver')
+    if (win && !win.isDestroyed() && win.isVisible()) {
+      if (!win.isAlwaysOnTop()) win.setAlwaysOnTop(true, 'screen-saver')
+      win.moveTop()
     }
   }
   win.on('show', reassert)
   win.on('focus', reassert)
   win.on('restore', reassert)
-  topmostInterval = setInterval(reassert, 30_000)
+  topmostInterval = setInterval(reassert, 2_000)
 
   const devUrl = process.env.ELECTRON_RENDERER_URL
   if (devUrl) {
