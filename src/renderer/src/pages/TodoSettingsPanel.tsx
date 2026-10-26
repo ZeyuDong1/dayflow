@@ -233,7 +233,7 @@ export default function TodoSettingsPanel() {
         <div className="settings-row">
           <div>
             <div className="settings-row-label">不透明度（%）/ 字号（px）</div>
-            <div className="settings-row-help">10–100 / 10–24</div>
+            <div className="settings-row-help">10–100 / 10–40</div>
           </div>
           <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <input
@@ -249,12 +249,33 @@ export default function TodoSettingsPanel() {
             <input
               type="range"
               min={10}
-              max={24}
+              max={40}
+              step={2}
               style={{ width: 120 }}
               value={num(ov.fontSize, 14)}
               onChange={(e) => save({ overlay_settings: { ...ov, fontSize: Number(e.target.value) } })}
             />
             <span className="settings-row-help">{num(ov.fontSize, 14)}px</span>
+          </span>
+        </div>
+        <div className="settings-row">
+          <div>
+            <div className="settings-row-label">字体粗细</div>
+            <div className="settings-row-help">
+              300 细 · 400 常规 · 500/600/700 中等偏粗 · 900 特粗；Focus/提醒行不细于原层级
+            </div>
+          </div>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <input
+              type="range"
+              min={300}
+              max={900}
+              step={100}
+              style={{ width: 200 }}
+              value={num(ov.fontWeight, 400)}
+              onChange={(e) => save({ overlay_settings: { ...ov, fontWeight: Number(e.target.value) } })}
+            />
+            <span className="settings-row-help">{num(ov.fontWeight, 400)}</span>
           </span>
         </div>
         <div className="settings-row">

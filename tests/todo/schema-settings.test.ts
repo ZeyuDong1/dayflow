@@ -38,6 +38,7 @@ describe('todo settings', () => {
     expect(DEFAULT_TODO_SETTINGS.overlay_settings).toEqual({
       opacity: 80,
       fontSize: 14,
+      fontWeight: 400,
       color: '#ffffff',
       mouseIgnore: true,
       focusGlowEnabled: true,

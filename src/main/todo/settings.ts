@@ -7,7 +7,8 @@ import type { TodoDB } from './db'
 
 export interface OverlaySettings {
   opacity: number // 10–100 %，默认 80
-  fontSize: number // 10–24 px，默认 14
+  fontSize: number // 10–40 px，默认 14
+  fontWeight: number // 300–900 字重，默认 400（≥800 由 Chromium 合成加粗）
   color: string // 文字颜色，默认 #ffffff
   mouseIgnore: boolean // 点击穿透，默认开
   focusGlowEnabled: boolean
@@ -52,6 +53,7 @@ export const DEFAULT_TODO_SETTINGS: TodoSettings = {
   overlay_settings: {
     opacity: 80,
     fontSize: 14,
+    fontWeight: 400,
     color: '#ffffff',
     mouseIgnore: true,
     focusGlowEnabled: true,
@@ -94,7 +96,8 @@ function overlaySettings(v: unknown): OverlaySettings {
   const o = (v && typeof v === 'object' ? v : {}) as Record<string, unknown>
   return {
     opacity: clampInt(o.opacity, 10, 100, d.opacity),
-    fontSize: clampInt(o.fontSize, 10, 24, d.fontSize),
+    fontSize: clampInt(o.fontSize, 10, 40, d.fontSize),
+    fontWeight: Math.round(clampInt(o.fontWeight, 300, 900, d.fontWeight) / 100) * 100,
     color: typeof o.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(o.color) ? o.color : d.color,
     mouseIgnore: typeof o.mouseIgnore === 'boolean' ? o.mouseIgnore : d.mouseIgnore,
     focusGlowEnabled: typeof o.focusGlowEnabled === 'boolean' ? o.focusGlowEnabled : d.focusGlowEnabled,

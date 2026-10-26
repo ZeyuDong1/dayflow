@@ -3747,6 +3747,7 @@ input[type='range']::-webkit-slider-thumb:active {
 /* ===== Overlay v2：Focus 标题最大 + 层级字号 + 深色面板（对齐原版观感） ===== */
 .ow-root {
   --ow-base: 14px;
+  font-weight: var(--ow-weight, 400);
   background: rgba(12, 12, 18, 0.66);
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
@@ -3783,7 +3784,7 @@ input[type='range']::-webkit-slider-thumb:active {
 .ow-row.ow-focus {
   align-items: center;
   gap: 8px;
-  font-weight: 700;
+  font-weight: max(var(--ow-weight, 400), 700);
   background: rgba(0, 0, 0, 0.2);
   padding: 8px;
   border-radius: 8px;
@@ -3795,7 +3796,7 @@ input[type='range']::-webkit-slider-thumb:active {
 .ow-timer { font-family: ui-monospace, Consolas, monospace; font-size: 0.8em !important; opacity: 0.8; }
 /* 副焦点：font-semibold text-sky-300 bg-sky-500/10 p-1 rounded */
 .ow-row.ow-side {
-  font-weight: 600;
+  font-weight: max(var(--ow-weight, 400), 600);
   color: #7dd3fc;
   background: rgba(14, 165, 233, 0.1);
   padding: 4px;
@@ -3820,7 +3821,7 @@ input[type='range']::-webkit-slider-thumb:active {
 /* 提醒：text-amber-400 font-bold bg-amber-500/10 p-1 rounded */
 .ow-row.ow-remind {
   color: #fbbf24;
-  font-weight: 700;
+  font-weight: max(var(--ow-weight, 400), 700);
   background: rgba(245, 158, 11, 0.1);
   padding: 4px;
   border-radius: 8px;
@@ -3842,7 +3843,7 @@ input[type='range']::-webkit-slider-thumb:active {
 /* 过期：overlay-breathe text-rose-300 font-bold bg-rose-500/15 p-1 rounded */
 .ow-row.ow-overdue {
   color: #fda4af;
-  font-weight: 700;
+  font-weight: max(var(--ow-weight, 400), 700);
   background: rgba(244, 63, 94, 0.15);
   padding: 4px;
   border-radius: 8px;

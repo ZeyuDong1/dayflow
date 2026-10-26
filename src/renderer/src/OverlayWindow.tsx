@@ -6,6 +6,7 @@ import type { TaskRow, TodoEvent } from '@shared/todo-types'
 interface OverlaySettingsShape {
   opacity: number
   fontSize: number
+  fontWeight?: number
   color: string
   mouseIgnore: boolean
   focusGlowEnabled: boolean
@@ -208,6 +209,7 @@ export default function OverlayWindow() {
         '--focus-glow-radius': `${settings.focusGlowIntensity}px`,
         '--focus-glow-speed': `${settings.focusGlowSpeed}s`,
         '--marquee-duration': `${Math.max(0.5, 320 / Math.max(1, settings.focusMarqueeSpeed))}s`,
+        '--ow-weight': String(settings.fontWeight ?? 400),
         opacity: settings.opacity / 100,
         fontSize: `${settings.fontSize}px`,
         color: settings.color,
