@@ -1225,34 +1225,6 @@ export default function ActivitiesView({
         )}
 
         <div className="act-body">
-        <div className="act-tree-side">
-          <div className="act-tree-title">类型</div>
-          <ProjectTree
-            projects={projects}
-            activities={filteredActivities}
-            onAssign={onTreeAssign}
-            onCreate={(title, parentId) => {
-              void window.dayflow
-                .createProject({ title, parentId, productivityScore: 4 })
-                .then(() => {
-                  load()
-                  onDataChanged()
-                })
-            }}
-            onDelete={(id) => {
-              void window.dayflow.deleteProject(id).then(() => {
-                load()
-                onDataChanged()
-              })
-            }}
-            onColor={(id, color) => {
-              void window.dayflow.updateProject(id, { color }).then(() => onDataChanged())
-            }}
-            onOpen={(id) => onOpenProject(id)}
-            expanded={treeExpanded}
-            toggleExpand={toggleTreeExpand}
-          />
-        </div>
         <div className="act-content">
           {view === 'category' && (
             <ActivityTree activities={filteredActivities} tasks={dayTasks} projects={projects} colorOf={projectColor} icons={appIcons} />
