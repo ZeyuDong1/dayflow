@@ -188,6 +188,10 @@ interface ANode {
   icon: 'dot' | 'app' | 'doc' | 'link' | 'chat' | 'timer'
   letter?: string
   children: ANode[]
+  /** 拖拽归类:该节点覆盖的活动 id 与 app/title 语义 */
+  ids: number[]
+  app?: string
+  title?: string
 }
 
 function fmtDur(min: number): string {
@@ -231,29 +235,39 @@ function ActivityTree({
     return (a.title || '（无标题）').replace(/[|·—–\-:：]\s*[^|·—–\-:：]*$/, '').trim() || '（无标题）'
   }
 
-  // project -> app -> title
+  // project -> app -> title（各层积累活动 ids 供拖拽归类）
   const byProj = new Map<
     string,
-    { minutes: number; projId: number | null; byApp: Map<string, { minutes: number; byTitle: Map<string, number> }> }
+    {
+      minutes: number
+      projId: number | null
+      ids: number[]
+      byApp: Map<string, { minutes: number; ids: number[]; byTitle: Map<string, { minutes: number; ids: number[] }> }>
+    }
   >()
   for (const a of activities) {
     const min = (a.endTs - a.startTs) / 60000
     const pkey = String(a.projectId ?? 'null')
-    const P = byProj.get(pkey) ?? { minutes: 0, projId: a.projectId, byApp: new Map() }
+    const P = byProj.get(pkey) ?? { minutes: 0, projId: a.projectId, ids: [] as number[], byApp: new Map() }
     P.minutes += min
-    const A = P.byApp.get(a.appName) ?? { minutes: 0, byTitle: new Map() }
+    P.ids.push(a.id)
+    const A = P.byApp.get(a.appName) ?? { minutes: 0, ids: [] as number[], byTitle: new Map() }
     A.minutes += min
+    A.ids.push(a.id)
     const tg = titleGroup(a)
-    A.byTitle.set(tg, (A.byTitle.get(tg) ?? 0) + min)
+    const T = A.byTitle.get(tg) ?? { minutes: 0, ids: [] }
+    T.minutes += min
+    T.ids.push(a.id)
+    A.byTitle.set(tg, T)
     P.byApp.set(a.appName, A)
     byProj.set(pkey, P)
   }
   for (const t of tasks) {
     const min = ((t.endTs ?? Date.now()) - t.startTs) / 60000
     const pkey = String(t.projectId ?? 'null')
-    const P = byProj.get(pkey) ?? { minutes: 0, projId: t.projectId, byApp: new Map() }
+    const P = byProj.get(pkey) ?? { minutes: 0, projId: t.projectId, ids: [] as number[], byApp: new Map() }
     P.minutes += min
-    const A = P.byApp.get('__timer__') ?? { minutes: 0, byTitle: new Map() }
+    const A = P.byApp.get('__timer__') ?? { minutes: 0, ids: [] as number[], byTitle: new Map() }
     A.minutes += min
     A.byTitle.set(t.title, (A.byTitle.get(t.title) ?? 0) + min)
     P.byApp.set('__timer__', A)
@@ -271,6 +285,7 @@ function ActivityTree({
         color: colorOf(P.projId),
         depth: 0 as const,
         icon: 'dot' as const,
+        ids: P.ids,
         children: [...P.byApp.entries()]
           .sort((a, b) => b[1].minutes - a[1].minutes)
           .map(([app, A]) => ({
@@ -281,12 +296,14 @@ function ActivityTree({
             depth: 1 as const,
             icon: (app === '__timer__' ? 'timer' : 'app') as ANode['icon'],
             letter: app === '__timer__' ? '⏱' : app.charAt(0).toUpperCase(),
+            ids: A.ids,
+            app,
             children: [...A.byTitle.entries()]
-              .sort((a, b) => b[1] - a[1])
-              .map(([title, min]) => ({
+              .sort((a, b) => b[1].minutes - a[1].minutes)
+              .map(([title, T]) => ({
                 key: `p${pkey}|${app}|${title}`,
                 label: title,
-                minutes: min,
+                minutes: T.minutes,
                 color: colorOf(P.projId),
                 depth: 2 as const,
                 icon: (title.startsWith('http') || title.includes('.') && !title.includes(' ')
@@ -294,6 +311,8 @@ function ActivityTree({
                   : title.includes('/') || title.includes('\\')
                     ? 'doc'
                     : 'chat') as ANode['icon'],
+                ids: T.ids,
+                title,
                 children: []
               }))
           }))
@@ -307,11 +326,21 @@ function ActivityTree({
     const hasKids = node.children.length > 0
     return (
       <>
-        <div
-          className="atr-row"
-          style={{ paddingLeft: 10 + node.depth * 26 }}
-          onClick={() => hasKids && toggle(node)}
-        >
+      <div
+        className="atr-row"
+        style={{ paddingLeft: 10 + node.depth * 26 }}
+        onClick={() => hasKids && toggle(node)}
+        draggable={node.depth > 0}
+        onDragStart={(e) => {
+          dragState.current = {
+            kind: node.depth === 2 ? 'row' : 'band',
+            ids: node.ids,
+            appName: node.depth >= 1 ? (node.app ?? node.label) : node.label,
+            title: node.depth === 2 ? node.label : ''
+          }
+          e.dataTransfer?.setData('text/plain', node.ids.join(','))
+        }}
+      >
           <span className="atr-dur">{fmtDur(node.minutes)}</span>
           <span className="atr-chev">{hasKids ? (open ? '⌄' : '⮕') : ''}</span>
           <span className="atr-icon">
@@ -1196,6 +1225,34 @@ export default function ActivitiesView({
         )}
 
         <div className="act-body">
+        <div className="act-tree-side">
+          <div className="act-tree-title">类型</div>
+          <ProjectTree
+            projects={projects}
+            activities={filteredActivities}
+            onAssign={onTreeAssign}
+            onCreate={(title, parentId) => {
+              void window.dayflow
+                .createProject({ title, parentId, productivityScore: 4 })
+                .then(() => {
+                  load()
+                  onDataChanged()
+                })
+            }}
+            onDelete={(id) => {
+              void window.dayflow.deleteProject(id).then(() => {
+                load()
+                onDataChanged()
+              })
+            }}
+            onColor={(id, color) => {
+              void window.dayflow.updateProject(id, { color }).then(() => onDataChanged())
+            }}
+            onOpen={(id) => onOpenProject(id)}
+            expanded={treeExpanded}
+            toggleExpand={toggleTreeExpand}
+          />
+        </div>
         <div className="act-content">
           {view === 'category' && (
             <ActivityTree activities={filteredActivities} tasks={dayTasks} projects={projects} colorOf={projectColor} icons={appIcons} />
@@ -1325,34 +1382,6 @@ export default function ActivitiesView({
               )}
             </div>
           )}
-        </div>
-        <div className="act-tree-side">
-          <div className="act-tree-title">类型 · 拖入归类</div>
-          <ProjectTree
-            projects={projects}
-            activities={filteredActivities}
-            onAssign={onTreeAssign}
-            onCreate={(title, parentId) => {
-              void window.dayflow
-                .createProject({ title, parentId, productivityScore: 4 })
-                .then(() => {
-                  load()
-                  onDataChanged()
-                })
-            }}
-            onDelete={(id) => {
-              void window.dayflow.deleteProject(id).then(() => {
-                load()
-                onDataChanged()
-              })
-            }}
-            onColor={(id, color) => {
-              void window.dayflow.updateProject(id, { color }).then(() => onDataChanged())
-            }}
-            onOpen={(id) => onOpenProject(id)}
-            expanded={treeExpanded}
-            toggleExpand={toggleTreeExpand}
-          />
         </div>
         </div>
       </div>
