@@ -12,6 +12,7 @@ interface InterruptState {
   title?: string
   devMinutes?: number
   breakMinutes?: number
+  allowBreak?: boolean
   soundEnabled?: boolean
   nudge?: string
   done?: boolean
@@ -102,12 +103,14 @@ export default function InterruptOverlay(): React.ReactElement {
               <button className="btn primary small" onClick={submit} disabled={!input.trim() || sending}>
                 发送反馈
               </button>
-              <button
-                className="btn ghost small"
-                onClick={() => void window.dayflow.supervisionBreak(state.breakMinutes ?? 10)}
-              >
-                休息一下({state.breakMinutes ?? 10} 分钟)
-              </button>
+              {state.allowBreak !== false && (
+                <button
+                  className="btn ghost small"
+                  onClick={() => void window.dayflow.supervisionBreak(state.breakMinutes ?? 10)}
+                >
+                  休息一下({state.breakMinutes ?? 10} 分钟)
+                </button>
+              )}
               <button className="btn ghost small" onClick={() => void window.dayflow.supervisionStopToday()}>
                 今天到此为止
               </button>

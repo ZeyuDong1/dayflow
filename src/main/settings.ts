@@ -71,6 +71,8 @@ export const defaultSettings: AppSettings = {
     interruptSec: 180, // 分心 3 分钟置顶弹窗强打断
     repeatSec: 600, // 持续分心每 10 分钟再打断一次
     breakMinutes: 10,
+    allowBreak: true,
+    allowPostpone: true,
     soundEnabled: true,
     reflectMinutes: 10 // 导师反思轮询间隔（可自定义 1-240 分钟）
   }

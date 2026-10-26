@@ -112,6 +112,8 @@ export interface TutorConfig {
   interruptSec: number // 分心持续多久强打断（置顶弹窗 + 声音）
   repeatSec: number // 持续分心时重复强打断的间隔
   breakMinutes: number // 一键休息的默认时长
+  allowBreak: boolean // 允许强打断面板"休息一下"暂停遮蔽；关=面板不提供该出口
+  allowPostpone: boolean // 允许轻提醒通知"稍后提醒"延迟一次；关=点击不延迟
   soundEnabled: boolean // 强打断时播放提示音
   reflectMinutes: number // 导师反思轮询间隔（分钟, 1-240, 默认 10）
 }

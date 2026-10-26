@@ -721,6 +721,28 @@ export default function SettingsPage({ onSaved }: { onSaved: () => void }): Reac
           </div>
           <div className="settings-row">
             <div>
+              <div className="settings-row-label">允许“休息一下”</div>
+              <div className="settings-row-help">
+                关闭后强打断面板不再提供“休息几分钟”按钮，遮蔽只能通过回到学习解除（主进程同步拒绝休息请求）。
+              </div>
+            </div>
+            <button
+              className={`switch ${settings.tutor.allowBreak ? 'on' : ''}`}
+              onClick={() => patch({ tutor: { allowBreak: !settings.tutor.allowBreak } })}
+            />
+          </div>
+          <div className="settings-row">
+            <div>
+              <div className="settings-row-label">允许“稍后提醒”</div>
+              <div className="settings-row-help">关闭后轻提醒通知点击不再延迟打断，时间照常累计。</div>
+            </div>
+            <button
+              className={`switch ${settings.tutor.allowPostpone ? 'on' : ''}`}
+              onClick={() => patch({ tutor: { allowPostpone: !settings.tutor.allowPostpone } })}
+            />
+          </div>
+          <div className="settings-row">
+            <div>
               <div className="settings-row-label">提醒声音</div>
               <div className="settings-row-help">强打断时播放提示音。</div>
             </div>

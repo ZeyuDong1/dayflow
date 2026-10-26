@@ -391,6 +391,7 @@ async function interruptPayload(ep: Episode): Promise<Record<string, unknown>> {
     title: ep.title,
     devMinutes: Math.round(devMinutes),
     breakMinutes: settings.tutor.breakMinutes,
+    allowBreak: settings.tutor.allowBreak,
     soundEnabled: settings.tutor.soundEnabled,
     nudge
   }
@@ -433,6 +434,11 @@ export async function submitFeedback(text: string): Promise<string> {
 }
 
 export function takeBreak(minutes?: number): void {
+  // 设置不允许"暂停遮蔽几分钟"时直接拒绝（面板按钮也不会渲染,此处兜底）
+  if (!getSettings().tutor.allowBreak) {
+    logEvent('break-denied', episode?.appName ?? null, episode?.title ?? null, 'allowBreak=false')
+    return
+  }
   const mins = minutes || getSettings().tutor.breakMinutes
   breakUntil = Date.now() + mins * 60_000
   logEvent('break', episode?.appName ?? null, episode?.title ?? null, `${mins} 分钟`)
@@ -577,20 +583,25 @@ async function tickInner(): Promise<void> {
     episode.gentleSent = true
     try {
       const devLabel = devSec < 60 ? `${Math.max(1, Math.round(devSec))} 秒` : `${Math.round(devSec / 60)} 分钟`
+      const postpone = settings.tutor.allowPostpone
       const n = new Notification({
         title: '学习小舟',
-        body: `已经分心 ${devLabel}了。回来只用 2 分钟,点击稍后提醒。`
+        body: postpone
+          ? `已经分心 ${devLabel}了。回来只用 2 分钟,点击稍后提醒。`
+          : `已经分心 ${devLabel}了。回来只用 2 分钟。`
       })
-      n.on('click', () => {
-        if (episode) {
-          episode.postponed = true
-          episode.gentleSent = true
-          episode.startTs = Date.now() // 延迟一次:重新计时
-          logEvent('gentle-postpone', episode.appName, episode.title, null)
-        }
-      })
+      if (postpone) {
+        n.on('click', () => {
+          if (episode) {
+            episode.postponed = true
+            episode.gentleSent = true
+            episode.startTs = Date.now() // 延迟一次:重新计时
+            logEvent('gentle-postpone', episode.appName, episode.title, null)
+          }
+        })
+      }
       n.show()
-      logEvent('gentle', episode.appName, episode.title, null)
+      logEvent('gentle', episode.appName, episode.title, postpone ? null : 'no-postpone')
     } catch {
       // 通知不可用时直接走强打断
     }
