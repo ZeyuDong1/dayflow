@@ -38,11 +38,15 @@ const QueryFullProcessImageNameW = k32.func(
   'bool QueryFullProcessImageNameW(intptr_t h, uint32 flags, uint16_t *name, uint32_t *size)'
 )
 const CloseHandle = k32.func('bool CloseHandle(intptr_t h)')
+const GetCurrentThreadId = k32.func('uint32 GetCurrentThreadId()')
 const GetWindowRect = u32.func('bool GetWindowRect(intptr_t hwnd, int32_t *rect)')
 const GetClientRect = u32.func('bool GetClientRect(intptr_t hwnd, int32_t *rect)')
 const ClientToScreen = u32.func('bool ClientToScreen(intptr_t hwnd, int32_t *point)')
 const IsIconic = u32.func('bool IsIconic(intptr_t hwnd)')
 const IsWindow = u32.func('bool IsWindow(intptr_t hwnd)')
+const AttachThreadInput = u32.func('bool AttachThreadInput(uint32 a, uint32 b, bool attach)')
+const SetFocus = u32.func('intptr_t SetFocus(intptr_t hwnd)')
+const keybd_event = u32.func('void keybd_event(uint8 vk, uint8 scan, uint32 flags, uintptr_t extra)')
 const ShowWindow = u32.func('bool ShowWindow(intptr_t hwnd, int cmd)')
 const PostMessageW = u32.func('bool PostMessageW(intptr_t hwnd, uint32 msg, uintptr_t wp, intptr_t lp)')
 const FindWindowExW = u32.func('intptr_t FindWindowExW(intptr_t parent, intptr_t child, str16 cls, str16 title)')
@@ -169,7 +173,7 @@ export function findChromiumTabHost(hwnd: number): number {
 const BROWSER_EXE_NAMES = new Set([
   'chrome', 'msedge', 'edge', 'firefox', 'brave', 'opera', 'vivaldi', 'chromium',
   '360se', '360chrome', 'qqbrowser', 'baidubrowser', 'ucbrowser', 'sogouexplorer',
-  'maxthon', 'duckduckgo', 'thorium', 'librewolf', 'waterfox', 'arc'
+  'maxthon', 'duckduckgo', 'thorium', 'librewolf', 'waterfox', 'arc', 'zen', 'floorp'
 ])
 
 /** 是否浏览器窗口:有 Chromium 标签宿主子窗口,或进程名命中已知浏览器表。 */
@@ -182,20 +186,47 @@ export function isBrowserWindow(hwnd: number): boolean {
   return /browser$|chrome/.test(base) // 兜底:xx浏览器/chrome 系命名
 }
 
-/** 关闭浏览器当前标签页:向窗口投递 Ctrl+W(不抢焦点,不关整只浏览器)。
- * Chromium 系发到 Chrome_RenderWidgetHostHWND 子窗;其余(如 Firefox)发到主窗尽力而为。 */
+/** 真·键盘注入:把 Ctrl+W 作为系统输入发给被附着聚焦的目标窗口。
+ * Gecko 系(Firefox/Zen 等)不消费投递的 WM_KEYDOWN,必须走输入注入。 */
+export function closeTabViaInput(hwnd: number): boolean {
+  try {
+    const tid = GetWindowThreadProcessId(hwnd, new Uint32Array(1))
+    const ourTid = GetCurrentThreadId()
+    if (!tid || !AttachThreadInput(tid, ourTid, true)) return false
+    try {
+      const prev = SetFocus(hwnd)
+      keybd_event(0x11, 0x1d, 0, 0) // Ctrl down
+      keybd_event(0x57, 0x11, 0, 0) // W down
+      keybd_event(0x57, 0x11, 2, 0) // W up (KEYEVENTF_KEYUP)
+      keybd_event(0x11, 0x1d, 2, 0) // Ctrl up
+      if (prev) SetFocus(prev)
+    } finally {
+      AttachThreadInput(tid, ourTid, false)
+    }
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** 关闭浏览器当前标签页(只关网页,不关整只浏览器):
+ * Chromium 系向标签宿主子窗投递 Ctrl+W(不抢焦点);
+ * Gecko 系(Firefox/Zen 等)投递无效,附着线程注入真实键盘输入。 */
 export function closeTabInWindow(hwnd: number): boolean {
   try {
-    const target = findChromiumTabHost(hwnd) || hwnd
-    const keyDown = (vk: number, scan: number): boolean =>
-      !!PostMessageW(target, 0x0100 /* WM_KEYDOWN */, vk, (scan << 16) | 1)
-    const keyUp = (vk: number, scan: number): boolean =>
-      !!PostMessageW(target, 0x0101 /* WM_KEYUP */, vk, 0xc0000000 + (scan << 16) + 1)
-    keyDown(0x11, 0x1d) // Ctrl
-    keyDown(0x57, 0x11) // W
-    keyUp(0x57, 0x11)
-    keyUp(0x11, 0x1d)
-    return true
+    if (findChromiumTabHost(hwnd)) {
+      const target = findChromiumTabHost(hwnd)
+      const keyDown = (vk: number, scan: number): boolean =>
+        !!PostMessageW(target, 0x0100 /* WM_KEYDOWN */, vk, (scan << 16) | 1)
+      const keyUp = (vk: number, scan: number): boolean =>
+        !!PostMessageW(target, 0x0101 /* WM_KEYUP */, vk, 0xc0000000 + (scan << 16) + 1)
+      keyDown(0x11, 0x1d) // Ctrl
+      keyDown(0x57, 0x11) // W
+      keyUp(0x57, 0x11)
+      keyUp(0x11, 0x1d)
+      return true
+    }
+    return closeTabViaInput(hwnd)
   } catch {
     return false
   }
