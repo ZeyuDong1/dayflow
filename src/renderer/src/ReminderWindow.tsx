@@ -122,6 +122,7 @@ export default function ReminderWindow() {
   const [items, setItems] = useState<ReminderItem[]>([])
   const [projects, setProjects] = useState<TaskProject[]>([])
   const [projectSelectTaskId, setProjectSelectTaskId] = useState<number | null>(null)
+  const [note, setNote] = useState('')
   const [newProject, setNewProject] = useState('')
   const [isVisible, setIsVisible] = useState(!document.hidden)
   const soundIntervalRef = useRef<number | null>(null)
@@ -181,6 +182,11 @@ export default function ReminderWindow() {
     const t = window.setTimeout(() => window.dayflow.todo.hideReminder(), 100)
     return () => window.clearTimeout(t)
   }, [items])
+
+  // 切换当前提醒时清空备注输入
+  useEffect(() => {
+    setNote('')
+  }, [items.length])
 
   // standard 排末尾为"当前"
   const sorted = useMemo(
@@ -355,6 +361,36 @@ export default function ReminderWindow() {
                     : '任务就绪'}
             </div>
             <div className="rw-tasktitle">{current.title}</div>
+            <div className="rw-noterow">
+              <input
+                className="rw-note-input"
+                value={note}
+                placeholder="添加备注…(记下进展或想法)"
+                onChange={(e) => setNote(e.target.value)}
+                onKeyDown={(e) => {
+                  e.stopPropagation() // 别让 Enter 冒泡成"完成当前任务"
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    const text = note.trim()
+                    if (!text || !current) return
+                    window.dayflow.todo.addMemo(current.id, text)
+                    setNote('')
+                  }
+                }}
+              />
+              <button
+                className="rw-sub"
+                style={{ flex: '0 0 auto' }}
+                onClick={() => {
+                  const text = note.trim()
+                  if (!text || !current) return
+                  window.dayflow.todo.addMemo(current.id, text)
+                  setNote('')
+                }}
+              >
+                添加备注
+              </button>
+            </div>
             <div className="rw-btns">
               {current.taskType === 'gpu-idle' || current.taskType === 'notification' ? (
                 <button className="rw-sub rw-wide" onClick={() => handleAction(current.id, 'dismiss')}>

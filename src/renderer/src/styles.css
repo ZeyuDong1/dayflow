@@ -3364,6 +3364,28 @@ input[type='range']::-webkit-slider-thumb:active {
   margin-bottom: 16px; line-height: 1.3; padding: 0 8px;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
+.rw-noterow {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  margin-top: 4px;
+}
+.rw-note-input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  background: #fffefc;
+  color: var(--text);
+  font-size: 12.5px;
+  font-family: var(--sans);
+  outline: none;
+}
+.rw-note-input:focus {
+  border-color: var(--accent);
+}
+
 .rw-btns { width: 100%; display: flex; flex-direction: column; gap: 8px; }
 .rw-complete {
   width: 100%; padding: 12px 0; border-radius: 8px; font-weight: 700; font-size: 14px;
