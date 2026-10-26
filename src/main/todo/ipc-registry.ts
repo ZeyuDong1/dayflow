@@ -49,6 +49,8 @@ export interface TodoIpcDeps {
   }
   mdSync?: {
     removeTask(filePath: string, taskId: number): Promise<void>
+    updateTask(filePath: string, taskId: number, newTitle: string): Promise<void>
+    moveSubtree(filePath: string, taskId: number): Promise<void>
     currentPath(): string
     selectFolder(): Promise<string | null>
     setConfig(enabled: boolean, folder: string): Promise<void>
@@ -109,7 +111,33 @@ export function registerTodoIpc(reg: IpcRegistry, deps: TodoIpcDeps): void {
   // 任务域
   reg.handle('todo:get-tasks', (() => tasks.getAllTasks()) as never)
   reg.handle('todo:create-task', ((_e: never, title: string, opts?: never) => tasks.createTask(title, opts)) as never)
-  reg.handle('todo:update-task', ((_e: never, id: number, updates: Partial<TaskRow>) => tasks.updateTask(id, updates)) as never)
+  reg.handle(
+    'todo:update-task',
+    // EpochToDo 终版顺序(缺了就是用户实测的重命名重复 bug):改名先原地重写
+    // 绑定 MD 行并回写新 hash,否则下一次 merge 把新标题当新增行、文件侧同步
+    // 再把旧标题复活成新任务;层级变化(parent_id)入库后外科搬移子树,否则文件
+    // 侧 merge 会把 parent_id"修复"回文件的旧缩进
+    (async (_e: never, id: number, updates: Partial<TaskRow>) => {
+      const mdPath = deps.mdSync?.currentPath?.() ?? ''
+      const isHierarchyChange = updates.parent_id !== undefined
+      if (!isHierarchyChange && typeof updates.title === 'string' && mdPath && deps.mdSync?.updateTask) {
+        try {
+          await deps.mdSync.updateTask(mdPath, id, updates.title)
+        } catch {
+          /* best-effort MD update */
+        }
+      }
+      const res = tasks.updateTask(id, updates)
+      if (isHierarchyChange && mdPath && deps.mdSync?.moveSubtree) {
+        try {
+          await deps.mdSync.moveSubtree(mdPath, id)
+        } catch {
+          /* best-effort MD move */
+        }
+      }
+      return res
+    }) as never,
+  )
   reg.handle('todo:set-side-focus', ((_e: never, id: number, enabled: boolean) => tasks.setSideFocus(id, enabled)) as never)
   reg.handle(
     'todo:delete-task',

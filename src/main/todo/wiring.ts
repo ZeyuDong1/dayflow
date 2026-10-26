@@ -128,6 +128,12 @@ export function createTodoRuntime(opts: { port?: number } = {}): TodoRuntime {
     removeTask(filePath: string, taskId: number): Promise<void> {
       return mdSyncService.removeTaskFromMd(filePath, taskId)
     },
+    updateTask(filePath: string, taskId: number, newTitle: string): Promise<void> {
+      return mdSyncService.updateTaskInMd(filePath, taskId, newTitle)
+    },
+    moveSubtree(filePath: string, taskId: number): Promise<void> {
+      return mdSyncService.moveTaskSubtreeInMd(filePath, taskId)
+    },
     currentPath(): string {
       return getSettings().md_sync_folder ? getEpochtodoPath(getSettings().md_sync_folder) : ''
     },
