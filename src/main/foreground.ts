@@ -45,6 +45,7 @@ const IsIconic = u32.func('bool IsIconic(intptr_t hwnd)')
 const IsWindow = u32.func('bool IsWindow(intptr_t hwnd)')
 const ShowWindow = u32.func('bool ShowWindow(intptr_t hwnd, int cmd)')
 const PostMessageW = u32.func('bool PostMessageW(intptr_t hwnd, uint32 msg, uintptr_t wp, intptr_t lp)')
+const FindWindowExW = u32.func('intptr_t FindWindowExW(intptr_t parent, intptr_t child, str16 cls, str16 title)')
 // DWMWA_EXTENDED_FRAME_BOUNDS = 9:真实可见框(不含隐形边框,含可见边框+标题栏)
 const dwm = koffi.load('dwmapi.dll')
 const DwmGetWindowAttribute = dwm.func(
@@ -130,6 +131,71 @@ export function minimizeWindow(hwnd: number): boolean {
 export function closeWindow(hwnd: number): boolean {
   try {
     return !!PostMessageW(hwnd, 0x0010, 0, 0)
+  } catch {
+    return false
+  }
+}
+
+/** 窗口所属进程的 exe 基名(小写,不含路径);失败返回空串。 */
+export function getWindowExeName(hwnd: number): string {
+  try {
+    const pidBuf = new Uint32Array(1)
+    GetWindowThreadProcessId(hwnd, pidBuf)
+    if (!pidBuf[0]) return ''
+    const hProc = OpenProcess(0x1000 /* PROCESS_QUERY_LIMITED_INFORMATION */, false, pidBuf[0])
+    if (!hProc) return ''
+    const nameBuf = new Uint16Array(1024)
+    const sizeBuf = new Uint32Array([1024])
+    let name = ''
+    if (QueryFullProcessImageNameW(hProc, 0, nameBuf, sizeBuf)) {
+      name = (Buffer.from(nameBuf.buffer).toString('utf16le').replace(/\0.*$/, '').split(/[\\/]/).pop() || '')
+    }
+    CloseHandle(hProc)
+    return name.toLowerCase()
+  } catch {
+    return ''
+  }
+}
+
+/** Chromium 系浏览器的标签页宿主子窗口(键盘加速键在这里处理)。 */
+export function findChromiumTabHost(hwnd: number): number {
+  try {
+    return Number(FindWindowExW(hwnd, null, 'Chrome_RenderWidgetHostHWND', ''))
+  } catch {
+    return 0
+  }
+}
+
+const BROWSER_EXE_NAMES = new Set([
+  'chrome', 'msedge', 'edge', 'firefox', 'brave', 'opera', 'vivaldi', 'chromium',
+  '360se', '360chrome', 'qqbrowser', 'baidubrowser', 'ucbrowser', 'sogouexplorer',
+  'maxthon', 'duckduckgo', 'thorium', 'librewolf', 'waterfox', 'arc'
+])
+
+/** 是否浏览器窗口:有 Chromium 标签宿主子窗口,或进程名命中已知浏览器表。 */
+export function isBrowserWindow(hwnd: number): boolean {
+  if (findChromiumTabHost(hwnd)) return true
+  const exe = getWindowExeName(hwnd)
+  if (!exe) return false
+  const base = exe.replace(/\.exe$/i, '')
+  if (BROWSER_EXE_NAMES.has(base)) return true
+  return /browser$|chrome/.test(base) // 兜底:xx浏览器/chrome 系命名
+}
+
+/** 关闭浏览器当前标签页:向窗口投递 Ctrl+W(不抢焦点,不关整只浏览器)。
+ * Chromium 系发到 Chrome_RenderWidgetHostHWND 子窗;其余(如 Firefox)发到主窗尽力而为。 */
+export function closeTabInWindow(hwnd: number): boolean {
+  try {
+    const target = findChromiumTabHost(hwnd) || hwnd
+    const keyDown = (vk: number, scan: number): boolean =>
+      !!PostMessageW(target, 0x0100 /* WM_KEYDOWN */, vk, (scan << 16) | 1)
+    const keyUp = (vk: number, scan: number): boolean =>
+      !!PostMessageW(target, 0x0101 /* WM_KEYUP */, vk, 0xc0000000 + (scan << 16) + 1)
+    keyDown(0x11, 0x1d) // Ctrl
+    keyDown(0x57, 0x11) // W
+    keyUp(0x57, 0x11)
+    keyUp(0x11, 0x1d)
+    return true
   } catch {
     return false
   }

@@ -14,6 +14,7 @@ interface InterruptState {
   breakMinutes?: number
   allowBreak?: boolean
   earnedBreakMinutes?: number
+  targetIsBrowser?: boolean
   soundEnabled?: boolean
   nudge?: string
   done?: boolean
@@ -153,10 +154,14 @@ export default function InterruptOverlay(): React.ReactElement {
               </button>
               <button
                 className="btn ghost small itx-danger"
-                title="关闭被拦截的应用(应用可能弹保存确认)"
+                title={
+                  state.targetIsBrowser
+                    ? '关闭当前网页(标签页),浏览器保持打开'
+                    : '关闭被拦截的应用(应用可能弹保存确认)'
+                }
                 onClick={() => void window.dayflow.supervisionCloseTarget()}
               >
-                关闭它
+                {state.targetIsBrowser ? '关闭网页' : '关闭它'}
               </button>
             </div>
             <div className="itx-hint">面板盖住了这个应用,最小化/关闭请用上面的按钮,提示会自动消失。</div>

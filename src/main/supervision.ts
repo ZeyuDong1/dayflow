@@ -5,9 +5,11 @@ import { todayKey } from './paths'
 import { db } from './db'
 import { classifyActivity, listProjects } from './projects'
 import {
+  closeTabInWindow,
   closeWindow,
   getForegroundInfoSync,
   getWindowGeom,
+  isBrowserWindow,
   isWindowUsable,
   minimizeWindow,
   type ForegroundInfo,
@@ -137,11 +139,13 @@ export function minimizeInterruptTarget(): boolean {
   return ok
 }
 
-/** 面板出口:温和关闭被覆盖的应用(WM_CLOSE,应用可弹"未保存"确认)。 */
+/** 面板出口:关闭被覆盖的应用。浏览器特殊化(用户定):只关当前网页(Ctrl+W),
+ * 不关整只浏览器;其余应用保持 WM_CLOSE 温和关闭。 */
 export function closeInterruptTarget(): boolean {
   if (!panelTargetHwnd) return false
-  const ok = closeWindow(panelTargetHwnd)
-  if (ok) logEvent('interrupt-target-close', panelTargetApp, null, null)
+  const browser = isBrowserWindow(panelTargetHwnd)
+  const ok = browser ? closeTabInWindow(panelTargetHwnd) : closeWindow(panelTargetHwnd)
+  if (ok) logEvent('interrupt-target-close', panelTargetApp, null, browser ? '浏览器→Ctrl+W 关网页' : 'WM_CLOSE')
   return ok
 }
 
@@ -397,6 +401,7 @@ async function interruptPayload(ep: Episode): Promise<Record<string, unknown>> {
     breakMinutes: settings.tutor.breakMinutes,
     allowBreak: settings.tutor.allowBreak,
     earnedBreakMinutes: Math.floor(breakBalanceMs / 60000),
+    targetIsBrowser: isBrowserWindow(ep.hwnd),
     soundEnabled: settings.tutor.soundEnabled,
     nudge
   }
