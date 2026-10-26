@@ -569,6 +569,7 @@ function TimingAxis({
   const [ppm, setPpm] = useState(1.15)
   // Ctrl+滚轮缩放:以光标下的时刻为锚点缩放,缩放后把该时刻滚回光标处
   const pendingScrollRef = React.useRef<number | null>(null)
+  const lastWheelZoomRef = React.useRef(0)
   React.useLayoutEffect(() => {
     const el = trackRef.current
     if (!el || pendingScrollRef.current == null) return
@@ -586,6 +587,7 @@ function TimingAxis({
       const minAtCursor = (el.scrollTop + offsetY) / ppm
       const next = Math.min(12, Math.max(0.2, ppm * (e.deltaY < 0 ? 1.15 : 1 / 1.15)))
       pendingScrollRef.current = minAtCursor * next - offsetY
+      lastWheelZoomRef.current = Date.now()
       setPpm(next)
     }
     el.addEventListener('wheel', onWheel, { passive: false })
@@ -614,10 +616,12 @@ function TimingAxis({
     return 'category'
   }
 
-  // 自动滚动：今天 → 现在；过去 → 最后活动
+  // 自动滚动：今天 → 现在；过去 → 最后活动。
+  // Ctrl+滚轮缩放后 1.5s 内跳过——ppm 变化会触发本 effect,把鼠标锚定的视口抢回"现在"
   useEffect(() => {
     const el = trackRef.current
     if (!el) return
+    if (Date.now() - lastWheelZoomRef.current < 1500) return
     const lastEnd = bands.length ? Math.max(...bands.map((b) => b.endTs)) : 0
     const target = isToday && nowY >= 0 ? nowY : lastEnd ? yOf(lastEnd) : 0
     el.scrollTop = Math.max(0, target - 380)
