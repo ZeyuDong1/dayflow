@@ -3971,7 +3971,7 @@ body.route-floating { background: transparent !important; }
 .ow-crumblevel { display: inline-flex; align-items: center; gap: 2px; flex-shrink: 0; white-space: nowrap; }
 .ow-crumbtext { white-space: nowrap; }
 .ow-crumbsub {
-  display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; min-width: 0;
+  display: flex; justify-content: space-between; align-items: center; gap: 8px; min-width: 0;
 }
 .ow-crumbsub > .ow-marquee, .ow-crumbsub > .ow-static-title { flex: 1; min-width: 0; }
 .ow-static-title {

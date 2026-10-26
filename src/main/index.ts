@@ -208,7 +208,11 @@ if (!gotLock) {
                 ? (BrowserWindow.getAllWindows().find(
                     (w) => !w.isDestroyed() && w.webContents.getURL().includes('#/interrupt')
                   ) ?? mainWindow)
-                : mainWindow
+                : process.env.DAYFLOW_SHOT_WIN === 'overlay'
+                  ? (BrowserWindow.getAllWindows().find(
+                      (w) => !w.isDestroyed() && w.webContents.getURL().includes('#/overlay')
+                    ) ?? mainWindow)
+                  : mainWindow
             if (!target || target.isDestroyed()) return Promise.resolve(null)
             const wins = BrowserWindow.getAllWindows().map(
               (w) => `${w.isDestroyed() ? 'DESTROYED' : w.webContents.getURL()} | ${w.getTitle()}`
