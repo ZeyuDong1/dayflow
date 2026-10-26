@@ -119,6 +119,11 @@ export class TaskService {
     return this.db.all<TaskRow>("SELECT * FROM tasks WHERE status = 'queued' LIMIT 5")
   }
 
+  /** 删除前收集子树 id(含自身,防环)——供 mdSync 先清 MD 行。 */
+  collectSubtreeIds(id: number): number[] {
+    return this.collectSubtree(id)
+  }
+
   /** 递归删除子树（防环）；history 故意保留（标题快照），timer 行一并清理。 */
   deleteTask(id: number): number[] {
     const doomed = this.collectSubtree(id)

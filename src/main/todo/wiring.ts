@@ -106,6 +106,12 @@ export function createTodoRuntime(opts: { port?: number } = {}): TodoRuntime {
   const autoSync = new AutoSyncManager({ db, tasks, broadcast: broadcast as never })
 
   const mdSync = {
+    removeTask(filePath: string, taskId: number): Promise<void> {
+      return mdSyncService.removeTaskFromMd(filePath, taskId)
+    },
+    currentPath(): string {
+      return getSettings().md_sync_folder ? getEpochtodoPath(getSettings().md_sync_folder) : ''
+    },
     async selectFolder(): Promise<string | null> {
       const r = await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] })
       return r.canceled ? null : (r.filePaths[0] ?? null)

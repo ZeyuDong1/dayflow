@@ -48,6 +48,8 @@ export interface TodoIpcDeps {
     clearTodoData(): void
   }
   mdSync?: {
+    removeTask(filePath: string, taskId: number): Promise<void>
+    currentPath(): string
     selectFolder(): Promise<string | null>
     setConfig(enabled: boolean, folder: string): Promise<void>
     getStatus(): Promise<{
@@ -109,7 +111,25 @@ export function registerTodoIpc(reg: IpcRegistry, deps: TodoIpcDeps): void {
   reg.handle('todo:create-task', ((_e: never, title: string, opts?: never) => tasks.createTask(title, opts)) as never)
   reg.handle('todo:update-task', ((_e: never, id: number, updates: Partial<TaskRow>) => tasks.updateTask(id, updates)) as never)
   reg.handle('todo:set-side-focus', ((_e: never, id: number, enabled: boolean) => tasks.setSideFocus(id, enabled)) as never)
-  reg.handle('todo:delete-task', ((_e: never, id: number) => tasks.deleteTask(id)) as never)
+  reg.handle(
+    'todo:delete-task',
+    // 先删 MD 行再删库(EpochToDo 终版顺序):任务行带着 md_line_hash,删库后就
+    // 无法定位 MD 里的子弹;残留行会被 mdSync 导入侧当真源立刻重建任务(用户实测"删了又出现")
+    (async (_e: never, id: number) => {
+      const doomed = tasks.collectSubtreeIds(id)
+      const mdPath = deps.mdSync?.currentPath?.() ?? ''
+      if (mdPath && deps.mdSync?.removeTask) {
+        for (const tid of doomed) {
+          try {
+            await deps.mdSync.removeTask(mdPath, tid) // 串行:每次调用都会重写整份 MD
+          } catch {
+            /* best-effort,MD 清理失败不阻塞 DB 删除 */
+          }
+        }
+      }
+      return tasks.deleteTask(id)
+    }) as never,
+  )
   reg.handle('todo:delete-all-tasks', (() => {
     timerManager.cancelAll()
     tasks.deleteAllTasks()
