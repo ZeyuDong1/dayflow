@@ -798,6 +798,34 @@ export default function SettingsPage({ onSaved }: { onSaved: () => void }): Reac
               onClick={() => patch({ tutor: { allowPostpone: !settings.tutor.allowPostpone } })}
             />
           </div>
+          <div className="settings-row">
+            <div>
+              <div className="settings-row-label">番茄休息冷却</div>
+              <div className="settings-row-help">
+                一次番茄休息自然结束后，需等此时长才能再次支取余额；期间强打断面板显示冷却倒计时。提前回学习不进冷却。
+              </div>
+            </div>
+            <select
+              value={settings.tutor.earnedBreakCooldownMin}
+              onChange={(e) => patch({ tutor: { earnedBreakCooldownMin: Number(e.target.value) } })}
+            >
+              {[0, 5, 10, 15, 30, 60].map((m) => (
+                <option key={m} value={m}>
+                  {m === 0 ? '无冷却' : `${m} 分钟`}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="settings-row">
+            <div>
+              <div className="settings-row-label">允许“今天到此为止”</div>
+              <div className="settings-row-help">关闭后强打断面板不再提供“今天到此为止”按钮。</div>
+            </div>
+            <button
+              className={`switch ${settings.tutor.allowStopToday ? 'on' : ''}`}
+              onClick={() => patch({ tutor: { allowStopToday: !settings.tutor.allowStopToday } })}
+            />
+          </div>
 
         </div>
         <div className="panel">

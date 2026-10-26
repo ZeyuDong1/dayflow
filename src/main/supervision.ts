@@ -68,6 +68,8 @@ const RESHOW_GAP_MS = 30_000 // 两次弹出的最小间隔(防抖/防闪)
 // ---- 番茄攒息(用户定:连续学习按比例攒休息;面板支取;提前回学习回存) ----
 let breakBalanceMs = 0 // 已攒未用的休息余额
 let lastLearnTickAt = 0 // 连续学习的上一个 tick 时刻(中断即清零,体现"连续")
+let earnedBreakActive = false // 当前正处于番茄支取的休息中
+let earnedCdUntil = 0 // 番茄冷却截止(支取休息自然结束后进入,期内不可再次支取)
 // 切回"最近弹过面板的违规窗口"的记忆时长:面板因切走自动消失只是给别的
 // 窗口让路,不代表赦免——记忆期内回到同一违规窗口立即重新覆盖,不留逃逸口。
 const RETURN_MEMORY_MS = 10 * 60_000
@@ -413,7 +415,9 @@ async function interruptPayload(ep: Episode): Promise<Record<string, unknown>> {
     devMinutes: Math.round(devMinutes),
     breakMinutes: settings.tutor.breakMinutes,
     allowBreak: settings.tutor.allowBreak,
+    allowStopToday: settings.tutor.allowStopToday,
     earnedBreakMinutes: Math.floor(breakBalanceMs / 60000),
+    earnedCdRemainingMinutes: Math.max(0, Math.ceil((earnedCdUntil - Date.now()) / 60000)),
     targetIsBrowser: isBrowserWindow(ep.hwnd),
     match,
     soundEnabled: settings.tutor.soundEnabled,
@@ -484,8 +488,13 @@ export function takeEarnedBreak(seconds: number): boolean {
     )
     return false
   }
+  if (Date.now() < earnedCdUntil) {
+    logEvent('earned-break-denied', episode?.appName ?? null, episode?.title ?? null, '冷却中')
+    return false
+  }
   breakBalanceMs -= want * 1000
   breakUntil = Date.now() + want * 1000
+  earnedBreakActive = true
   logEvent('earned-break', episode?.appName ?? null, episode?.title ?? null, `${Math.round(want / 60)} 分钟`)
   episode = null
   calmSince = 0
@@ -495,6 +504,11 @@ export function takeEarnedBreak(seconds: number): boolean {
 }
 
 export function stopToday(): void {
+  // 设置不允许"今天到此为止"时直接拒绝（面板按钮也不会渲染,此处兜底）
+  if (!getSettings().tutor.allowStopToday) {
+    logEvent('stop-today-denied', episode?.appName ?? null, episode?.title ?? null, 'allowStopToday=false')
+    return
+  }
   pausedDayKey = todayKey()
   logEvent('stop-today', episode?.appName ?? null, episode?.title ?? null, null)
   episode = null
@@ -577,6 +591,18 @@ async function tickInner(): Promise<void> {
   if (!settings.tutor.enabled) return
   if (isPaused()) return
 
+  // 番茄支取的休息自然到期 → 进入冷却(用户设定时长);期内面板不可再次支取。
+  // 提前回学习回收的不进冷却(人已经回到学习,惩罚无意义)
+  if (earnedBreakActive && breakUntil > 0 && Date.now() >= breakUntil) {
+    earnedBreakActive = false
+    breakUntil = 0
+    const cdMin = getSettings().tutor.earnedBreakCooldownMin
+    if (cdMin > 0) {
+      earnedCdUntil = Date.now() + cdMin * 60_000
+      logEvent('earned-break-cd', null, null, `${cdMin} 分钟`)
+    }
+  }
+
   // 番茄休息进行中:零打扰(弱提醒/强遮蔽都不出);持续 8s 回学习则把没用完的余额回存
   if (Date.now() < breakUntil) {
     const fgB = getForegroundInfoSync()
@@ -587,6 +613,7 @@ async function tickInner(): Promise<void> {
         const remainMs = breakUntil - Date.now()
         breakUntil = 0
         calmSince = 0
+        earnedBreakActive = false // 提前回学习:无冷却
         lastLearnTickAt = Date.now() // 无缝接续攒息
         logEvent(
           'break-reclaim',

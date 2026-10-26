@@ -28,7 +28,9 @@ interface InterruptState {
   devMinutes?: number
   breakMinutes?: number
   allowBreak?: boolean
+  allowStopToday?: boolean
   earnedBreakMinutes?: number
+  earnedCdRemainingMinutes?: number
   targetIsBrowser?: boolean
   match?: InterruptMatch | null
   soundEnabled?: boolean
@@ -139,16 +141,22 @@ export default function InterruptOverlay(): React.ReactElement {
                   休息一下({state.breakMinutes ?? 10} 分钟)
                 </button>
               )}
-              <button className="btn ghost small" onClick={() => void window.dayflow.supervisionStopToday()}>
-                今天到此为止
-              </button>
+              {state.allowStopToday !== false && (
+                <button className="btn ghost small" onClick={() => void window.dayflow.supervisionStopToday()}>
+                  今天到此为止
+                </button>
+              )}
             </div>
             {typeof state.earnedBreakMinutes === 'number' && state.earnedBreakMinutes >= 1 && (
               <div className="itx-approw">
                 <span className="itx-applabel" style={{ marginLeft: 0 }}>
                   番茄余额 {state.earnedBreakMinutes} 分钟
                 </span>
-                {[5, 10, 15, 20, 30]
+                {(state.earnedCdRemainingMinutes ?? 0) > 0 && (
+                  <span className="itx-cd">番茄冷却中 · 剩 {state.earnedCdRemainingMinutes} 分钟</span>
+                )}
+                {(state.earnedCdRemainingMinutes ?? 0) <= 0 &&
+                  [5, 10, 15, 20, 30]
                   .filter((m) => m < state.earnedBreakMinutes!)
                   .map((m) => (
                     <button
