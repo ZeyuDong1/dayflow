@@ -3,7 +3,7 @@ import path from 'path'
 import { getSettings } from './settings'
 import { todayKey } from './paths'
 import { db } from './db'
-import { classifyActivity, listProjects } from './projects'
+import { classifyActivity, classifyActivityDetail, listProjects } from './projects'
 import {
   closeTabInWindow,
   closeWindow,
@@ -393,6 +393,19 @@ async function interruptPayload(ep: Episode): Promise<Record<string, unknown>> {
   const devMinutes = (Date.now() - ep.startTs) / 60000
   // 打断瞬间零 LLM:直接显示反思/反馈时刻预备好的常驻督促语,缺失才用兜底句
   const nudge = getCachedNudge() || buildNudgeFallback(devMinutes, ep.appName)
+  // 判定依据:命中了哪个分类/规则才遮蔽(用户要求面板可见)
+  const detail = classifyActivityDetail(ep.appName, ep.title)
+  const proj = detail ? listProjects().find((p) => p.id === detail.projectId) ?? null : null
+  const match =
+    detail && proj
+      ? {
+          project: proj.title,
+          score: proj.productivityScore,
+          source: detail.source,
+          matched: detail.matched,
+          whitelist: settings.tutor.allowedProjectIds.length > 0
+        }
+      : null
   return {
     goal: settings.tutor.goal,
     appName: ep.appName,
@@ -402,6 +415,7 @@ async function interruptPayload(ep: Episode): Promise<Record<string, unknown>> {
     allowBreak: settings.tutor.allowBreak,
     earnedBreakMinutes: Math.floor(breakBalanceMs / 60000),
     targetIsBrowser: isBrowserWindow(ep.hwnd),
+    match,
     soundEnabled: settings.tutor.soundEnabled,
     nudge
   }

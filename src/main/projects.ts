@@ -296,12 +296,41 @@ function evalConditions(conditions: RuleNode, app: string, title: string, urlOrP
   return evalNode(conditions, app, title, urlOrPath)
 }
 
-/** Classify an activity through the rule engine (first matching rule wins). */
-export function classifyActivity(appName: string, title: string, urlOrPath: string | null = null): number | null {
+export type ClassifySource = 'rule' | 'learned-title' | 'site-hint' | 'learned-app'
+
+export interface ClassifyMatch {
+  projectId: number
+  source: ClassifySource
+  /** 可读匹配依据(规则条件摘要/标题模式/站点名/应用名),供强打断面板展示。 */
+  matched: string
+}
+
+const FIELD_LABEL: Record<string, string> = { app: '应用', title: '标题', urlOrPath: '路径' }
+const OP_LABEL: Record<string, string> = { contains: '含', equals: '=', startsWith: '以…开头', regex: '正则' }
+
+function summarizeNode(n: RuleNode): string {
+  const walk = (x: RuleNode): string[] => {
+    if (x.kind === 'cond') {
+      const field = FIELD_LABEL[x.field] ?? String(x.field)
+      const op = OP_LABEL[x.op] ?? x.op
+      return [`${field}${op}"${x.value}"`]
+    }
+    if (x.kind === 'not') return walk(x.child)
+    return x.children.flatMap(walk)
+  }
+  return walk(n).slice(0, 3).join(' · ')
+}
+
+/** 带依据的分类:强打断面板要显示"匹配到什么才遮蔽"。 */
+export function classifyActivityDetail(
+  appName: string,
+  title: string,
+  urlOrPath: string | null = null
+): ClassifyMatch | null {
   const rules = listRules()
   for (const rule of rules) {
     if (evalConditions(rule.conditions, appName, title, urlOrPath)) {
-      return rule.projectId
+      return { projectId: rule.projectId, source: 'rule', matched: summarizeNode(rule.conditions) }
     }
   }
   // Title-level learned classification (browsers are classified by page, not exe).
@@ -311,7 +340,7 @@ export function classifyActivity(appName: string, title: string, urlOrPath: stri
       `SELECT project_id FROM classifications WHERE app_name = ? AND title_pattern = ? LIMIT 1`,
       [appName, pattern]
     )
-    if (titleLevel) return titleLevel.project_id
+    if (titleLevel) return { projectId: titleLevel.project_id, source: 'learned-title', matched: `标题模式"${pattern}"` }
     // Site hints give an instant verdict for well-known pages.
     const hint = siteHintProject(title)
     if (hint) {
@@ -323,7 +352,7 @@ export function classifyActivity(appName: string, title: string, urlOrPath: stri
            ON CONFLICT(app_name, title_pattern) DO UPDATE SET project_id = excluded.project_id`,
           [appName, pattern, proj.id, Date.now()]
         )
-        return proj.id
+        return { projectId: proj.id, source: 'site-hint', matched: `站点"${hint}"` }
       }
     }
     return null
@@ -333,8 +362,13 @@ export function classifyActivity(appName: string, title: string, urlOrPath: stri
     `SELECT project_id FROM classifications WHERE app_name = ? AND title_pattern = '*' LIMIT 1`,
     [appName]
   )
-  if (appLevel) return appLevel.project_id
+  if (appLevel) return { projectId: appLevel.project_id, source: 'learned-app', matched: `应用"${appName}"` }
   return null
+}
+
+/** Classify an activity through the rule engine (first matching rule wins). */
+export function classifyActivity(appName: string, title: string, urlOrPath: string | null = null): number | null {
+  return classifyActivityDetail(appName, title, urlOrPath)?.projectId ?? null
 }
 
 /** Has this app ever been seen (any activity or classification)? */

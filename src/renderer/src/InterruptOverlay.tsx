@@ -6,6 +6,21 @@ import React, { useEffect, useRef, useState } from 'react'
  * 违规窗口被最小化/关闭/切走时,主进程会自动关掉本面板。
  */
 
+interface InterruptMatch {
+  project: string
+  score: number
+  source: string
+  matched: string
+  whitelist: boolean
+}
+
+const MATCH_SOURCE_LABEL: Record<string, string> = {
+  rule: '规则匹配',
+  'learned-title': '页面标题学习',
+  'site-hint': '站点识别',
+  'learned-app': '应用学习',
+}
+
 interface InterruptState {
   goal?: string
   appName?: string
@@ -15,6 +30,7 @@ interface InterruptState {
   allowBreak?: boolean
   earnedBreakMinutes?: number
   targetIsBrowser?: boolean
+  match?: InterruptMatch | null
   soundEnabled?: boolean
   nudge?: string
   done?: boolean
@@ -85,6 +101,16 @@ export default function InterruptOverlay(): React.ReactElement {
         </div>
 
         <div className="itx-nudge">{state.nudge ?? '……'}</div>
+
+        {state.match && (
+          <div className="itx-match">
+            判定：命中「{state.match.project}」
+            {typeof state.match.score === 'number' && `(效率分 ${state.match.score})`} ·{' '}
+            {MATCH_SOURCE_LABEL[state.match.source] ?? state.match.source}
+            {state.match.matched ? ` · ${state.match.matched}` : ''}
+            {state.match.whitelist ? ' · 不在学习白名单' : ''}
+          </div>
+        )}
 
         {!state.done && (
           <>
