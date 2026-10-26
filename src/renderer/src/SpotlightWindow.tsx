@@ -784,7 +784,18 @@ function SpotlightBulletEditor({ tasks, projects, onRefetch, onExit }: EditorPro
       setPendingFocusId(id)
     },
     deleteTask: async (id) => {
-      await window.dayflow.todo.deleteTask(id)
+      try {
+        const doomed = await window.dayflow.todo.deleteTask(id)
+        console.log('[spotlight-delete] deleted', doomed)
+        if (!doomed || doomed.length === 0) {
+          setSideFocusNotice('删除未生效(任务不存在?)')
+          setTimeout(() => setSideFocusNotice(null), 2500)
+        }
+      } catch (e) {
+        console.error('[spotlight-delete] failed', e)
+        setSideFocusNotice(`删除失败:${e instanceof Error ? e.message : String(e)}`)
+        setTimeout(() => setSideFocusNotice(null), 4000)
+      }
       onRefetch()
     },
     completeTask: async (id) => {
