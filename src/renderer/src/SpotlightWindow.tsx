@@ -311,12 +311,27 @@ function BulletRow({
   const hasLinks = linkSegments.some((s) => s.url)
   const inputSuspended = !isEditing && hasLinks
 
+  // 已提交但 props 尚未跟上的标题:期间禁止 effect 用旧 props 回写本地值,
+  // 否则 blur 瞬间(isEditing 翻 false、task.title 还是旧值)标题会闪回旧文,
+  // 等下一轮 refetch 才跳回来——加"!"后行还会在新旧 bang 排序间来回跳。
+  const pendingCommitRef = useRef<string | null>(null)
   useEffect(() => {
+    if (pendingCommitRef.current !== null) {
+      if (task.title === pendingCommitRef.current) pendingCommitRef.current = null
+      return
+    }
     if (!isEditing) setTitle(task.title)
   }, [task.title, isEditing])
 
   const commitTitle = () => {
-    if (title !== task.title) actions.updateTitle(task.id, title)
+    if (title !== task.title) {
+      pendingCommitRef.current = title
+      actions.updateTitle(task.id, title)
+      // 更新失败/丢失时的兜底:3s 后放弃等待,恢复 props 同步
+      window.setTimeout(() => {
+        if (pendingCommitRef.current === title) pendingCommitRef.current = null
+      }, 3000)
+    }
     onStopEdit()
   }
 
@@ -688,8 +703,12 @@ function SpotlightBulletEditor({ tasks, projects, onRefetch, onExit }: EditorPro
 
   // ===== OutlinerActions 实现 =====
   const actions: OutlinerActions = {
-    createChild: async (parentId) => {
+    createChild: async (parentId, title) => {
       const parent = findNode(tree, parentId)
+      // 结构操作前先落盘未提交的标题改动(与 indent/dedent 行为一致)
+      if (parent && title !== parent.task.title) {
+        await window.dayflow.todo.updateTask(parentId, { title })
+      }
       const projectId = parent?.task.project_id ?? undefined
       const newTask = await window.dayflow.todo.createTask('', {
         type: 'standard',
@@ -701,8 +720,11 @@ function SpotlightBulletEditor({ tasks, projects, onRefetch, onExit }: EditorPro
       pendingFocusTreeRef.current = tree
       setPendingFocusId(newTask.id)
     },
-    createSibling: async (siblingId) => {
+    createSibling: async (siblingId, title) => {
       const sibling = findNode(tree, siblingId)
+      if (sibling && title !== sibling.task.title) {
+        await window.dayflow.todo.updateTask(siblingId, { title })
+      }
       const parentId = sibling?.task.parent_id ?? undefined
       const projectId = sibling?.task.project_id ?? undefined
       const newTask = await window.dayflow.todo.createTask('', {
@@ -835,8 +857,18 @@ function SpotlightBulletEditor({ tasks, projects, onRefetch, onExit }: EditorPro
 
       if (e.key === 'Enter') {
         e.preventDefault()
-        if (e.shiftKey) actions.createSibling(taskId, currentTitle)
-        else actions.createChild(taskId, currentTitle)
+        const original = findNode(tree, taskId)?.task.title ?? ''
+        if (e.shiftKey) {
+          actions.createSibling(taskId, currentTitle)
+          return
+        }
+        // 标题有改动时 Enter = 确认编辑(不再顺带新建空草稿——那正是"重复行"的来源);
+        // 无改动才按原语义新建子任务
+        if (currentTitle !== original) {
+          actions.updateTitle(taskId, currentTitle)
+          return
+        }
+        actions.createChild(taskId, currentTitle)
         return
       }
 
@@ -947,6 +979,7 @@ export default function SpotlightWindow() {
   const [focusToday, setFocusToday] = useState(0)
 
   const inputRef = useRef<HTMLInputElement>(null)
+  const fetchSeq = useRef(0)
   useEffect(() => {
     if (confirmCompleteTask) setProjectHighlightIdx(0)
   }, [confirmCompleteTask])
@@ -963,6 +996,9 @@ export default function SpotlightWindow() {
   const parsed: ParsedCommand = useMemo(() => parseCommand(input), [input])
 
   const fetchData = useCallback(async () => {
+    // 乱序防护:每秒 timer:update 和操作后 refetch 并发,旧响应后到会用过期
+    // 数据覆盖新数据(标题闪回旧值/行位置翻转)——只采纳最新一次的结果
+    const seq = ++fetchSeq.current
     try {
       const [t, pr, g, focus] = await Promise.all([
         window.dayflow.todo.getTasks(),
@@ -970,6 +1006,7 @@ export default function SpotlightWindow() {
         window.dayflow.todo.getGpus(),
         window.dayflow.todo.focusToday(),
       ])
+      if (seq !== fetchSeq.current) return
       // 按创建时间排序（新的在前）
       t.sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
       setTasks(t)
