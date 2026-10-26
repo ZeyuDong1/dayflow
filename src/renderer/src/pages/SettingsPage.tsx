@@ -60,17 +60,17 @@ export default function SettingsPage({ onSaved }: { onSaved: () => void }): Reac
     void window.dayflow.getSettings().then(setSettings)
     void window.dayflow.getStorageUsage().then(setUsage)
     void window.dayflow.tutorStatus().then(setTutorStatus)
-    // 记忆服务状态轮询:自动下载二进制时进度文案在这里实时刷新
-    const poll = window.setInterval(() => {
-      void window.dayflow.tutorStatus().then(setTutorStatus)
-    }, 3000)
-    return () => window.clearInterval(poll)
     void window.dayflow.listProjects().then(setProjects)
     void window.dayflow.getTodayKey().then((t) => {
       setExportStart(t)
       setExportEnd(t)
       setReprocessDay(t)
     })
+    // 记忆服务状态轮询:自动下载二进制时进度文案在这里实时刷新
+    const poll = window.setInterval(() => {
+      void window.dayflow.tutorStatus().then(setTutorStatus)
+    }, 3000)
+    return () => window.clearInterval(poll)
   }, [])
 
   const patch = useCallback(
