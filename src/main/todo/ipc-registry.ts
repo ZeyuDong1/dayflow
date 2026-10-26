@@ -36,6 +36,8 @@ export interface TodoIpcDeps {
   focusSessions?: (day: string) => { id: number; taskId: number | null; title: string; startTs: number; endTs: number }[]
   sessionAnalyses?: (day: string) => unknown[]
   analyzeDay?: (day: string) => Promise<number>
+  wandbUpdate?: () => void
+  wandbTest?: (entity: string, apiKey: string) => Promise<{ valid: boolean; projectCount: number; hostname: string; error?: string }>
   mdSync?: {
     selectFolder(): Promise<string | null>
     setConfig(enabled: boolean, folder: string): Promise<void>
@@ -165,6 +167,15 @@ export function registerTodoIpc(reg: IpcRegistry, deps: TodoIpcDeps): void {
   reg.handle('todo:focus-sessions', ((_e: never, day: string) => deps.focusSessions?.(day) ?? []) as never)
   reg.handle('todo:session-analyses', ((_e: never, day: string) => deps.sessionAnalyses?.(day) ?? []) as never)
   reg.handle('todo:analyze-day', ((_e: never, day: string) => deps.analyzeDay?.(day) ?? Promise.resolve(0)) as never)
+
+  // wandb 域
+  reg.handle(
+    'wandb:test',
+    ((_e: never, entity: string, apiKey: string) =>
+      deps.wandbTest?.(entity, apiKey) ??
+      Promise.resolve({ valid: false, projectCount: 0, hostname: '', error: 'not wired' })) as never,
+  )
+  reg.on('wandb:update', (() => deps.wandbUpdate?.()) as never)
 
   // MD 同步域（语义规格 §10；协议语义按功能清单 §七）
   reg.handle('md-sync:select-folder', (() => deps.mdSync?.selectFolder() ?? Promise.resolve(null)) as never)

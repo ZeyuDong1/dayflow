@@ -35,6 +35,7 @@ import {
   type SessionSample,
 } from './compliance'
 import { createLlmJudge } from './compliance-judge'
+import { WandbBridge } from './wandb-bridge'
 import { AutoSyncManager } from './mdsync/autoSync'
 import { MdSyncService, getEpochtodoPath } from './mdsync/service'
 import { parseMdContent } from './mdsync/pure'
@@ -95,6 +96,9 @@ export function createTodoRuntime(opts: { port?: number } = {}): TodoRuntime {
     port: opts.port,
   })
 
+  // wandb 桥（语义规格 §9）
+  const wandbBridge = new WandbBridge({ tasks, gpus, timerManager, getSettings, broadcast: broadcast as never, now })
+
   // mdSync（语义规格 §5.5/§5.6）：设置驱动生命周期 + IPC 面
   const mdSyncService = new MdSyncService(db)
   const autoSync = new AutoSyncManager({ db, tasks, broadcast: broadcast as never })
@@ -154,7 +158,13 @@ export function createTodoRuntime(opts: { port?: number } = {}): TodoRuntime {
     timerManager,
     ai,
     getSettings,
-    saveSettings: (patch: DeepPartial<TodoSettings>) => saveTodoSettings(db, patch),
+    saveSettings: (patch: DeepPartial<TodoSettings>) => {
+      const next = saveTodoSettings(db, patch)
+      wandbBridge.update() // wandb 设置变更即时重启轮询
+      return next
+    },
+    wandbUpdate: () => wandbBridge.update(),
+    wandbTest: (entity: string, apiKey: string) => wandbBridge.testConnection(entity, apiKey),
     hideReminder: () => hideReminderWindow(),
     hideSpotlight: () => hideSpotlight(),
     setOverlayIgnoreMouse: (ignore: boolean) => setOverlayIgnoreMouse(ignore),
@@ -229,6 +239,7 @@ export function createTodoRuntime(opts: { port?: number } = {}): TodoRuntime {
         const st = getSettings()
         if (st.md_sync_enabled && st.md_sync_folder) autoSync.start(st.md_sync_folder)
       }
+      wandbBridge.update()
       try {
         await server.start()
       } catch {
@@ -237,6 +248,7 @@ export function createTodoRuntime(opts: { port?: number } = {}): TodoRuntime {
     },
     async stop() {
       unregisterShortcuts()
+      wandbBridge.stop()
       autoSync.stop()
       timerManager.stop()
       await server.stop()

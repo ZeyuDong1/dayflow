@@ -320,6 +320,14 @@ const api = {
       ipcRenderer.invoke('todo:focus-sessions', day),
     sessionAnalyses: (day: string): Promise<unknown[]> => ipcRenderer.invoke('todo:session-analyses', day),
     analyzeDay: (day: string): Promise<number> => ipcRenderer.invoke('todo:analyze-day', day),
+    wandbUpdate: (): void => {
+      ipcRenderer.send('wandb:update')
+    },
+    wandbTest: (
+      entity: string,
+      apiKey: string,
+    ): Promise<{ valid: boolean; projectCount: number; hostname: string; error?: string }> =>
+      ipcRenderer.invoke('wandb:test', entity, apiKey),
     mdSync: {
       selectFolder: (): Promise<string | null> => ipcRenderer.invoke('md-sync:select-folder'),
       setConfig: (enabled: boolean, folder: string): Promise<void> =>
