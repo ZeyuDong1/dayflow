@@ -235,7 +235,8 @@ const api = {
   supervisionBreak: (minutes?: number): Promise<boolean> =>
     ipcRenderer.invoke('supervision:break', minutes),
   supervisionStopToday: (): Promise<boolean> => ipcRenderer.invoke('supervision:stopToday'),
-  supervisionPreview: (): Promise<boolean> => ipcRenderer.invoke('supervision:preview'),
+  supervisionPreview: (strict?: boolean): Promise<boolean> =>
+    ipcRenderer.invoke('supervision:preview', strict),
   supervisionInterruptState: (): Promise<Record<string, unknown> | null> =>
     ipcRenderer.invoke('supervision:interruptState'),
   onSupervisionInterrupt: (cb: (payload: Record<string, unknown>) => void): (() => void) => {

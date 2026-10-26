@@ -1441,12 +1441,28 @@ label.field {
 .itx-wrap {
   height: 100vh;
   box-sizing: border-box;
-  padding: 22px 26px;
+  padding: 24px;
   display: flex;
-  flex-direction: column;
-  gap: 12px;
+  align-items: center;
+  justify-content: center;
   background: linear-gradient(180deg, #fffdf8 0%, #fdf3e8 100%);
   overflow: hidden;
+}
+
+/* 内容聚拢在中央卡片:大窗口下组件不再散在四角 */
+.itx-card {
+  width: 100%;
+  max-width: 600px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 28px 30px 22px;
+  background: #fffdf8;
+  border-radius: 18px;
+  box-shadow: 0 10px 32px rgba(120, 82, 48, 0.14);
+  max-height: 92%;
+  overflow-y: auto;
 }
 
 .itx-head {
@@ -1470,13 +1486,11 @@ label.field {
 }
 
 .itx-nudge {
-  font-size: 17px;
-  line-height: 1.7;
+  font-size: 18px;
+  line-height: 1.75;
   font-weight: 500;
   color: #4a3b30;
-  padding: 4px 2px;
-  flex: 1;
-  overflow-y: auto;
+  padding: 2px 2px;
 }
 
 .itx-input {

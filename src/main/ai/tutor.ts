@@ -1,5 +1,6 @@
 import { gatherMemory, memoryWritePage, memoryReadPage, memoryQuery, MEM_GOAL, MEM_PROFILE, MEM_REFLECTIONS, type MemoryBlocks } from '../memory/client'
 import { KNOWLEDGE_DIGEST } from './knowledge'
+import { extractJsonObject } from './providers'
 
 /**
  * 学习导师 Agent —— 有"思维"的常驻学习伙伴。
@@ -121,8 +122,8 @@ export function stripMemoLine(answer: string): string {
 }
 
 /**
- * 反思 tick(轮询):把最近一段时间的活动/对话浓缩成一条反思,沉淀进记忆。
- * 这是"导师有思维"的后台思考——按用户设定的间隔(默认 10 分钟)触发。
+ * 反思 tick(轮询):把最近一段时间的活动/对话浓缩成一条反思,沉淀进记忆,
+ * 并"顺便"更新常驻督促语(下次打断面板直接显示,弹出时零 LLM)。
  */
 export async function runReflectionTick(input: {
   recentActivities: { appName: string; title: string; minutes: number }[]
@@ -135,16 +136,25 @@ export async function runReflectionTick(input: {
     .slice(0, 12)
     .map((a) => `- ${a.appName}: ${a.title.slice(0, 60)} (${Math.round(a.minutes)}m)`)
     .join('\n')
-  const prompt = `你是学习导师${TUTOR_NAME}的"后台思考"。根据最近的情况写一条简短反思(2-3 句),存入长期记忆。用专业视角找模式:分心的情绪诱因(焦虑/无聊/畏难)、启动困难、时间感偏差、高效时段、学习方法是否低效(如只看不练);既洞察又不评判,不贴标签。
+  const prompt = `你是学习导师${TUTOR_NAME}的"后台思考"。根据最近的情况输出 JSON(只输出 JSON,不要其他文字):
+{"reflection": "2-3 句反思,存入长期记忆。用专业视角找模式:分心的情绪诱因(焦虑/无聊/畏难)、启动困难、时间感偏差、高效时段、学习方法是否低效;既洞察又不评判,不贴标签", "nudge": "25 字内,下次他分心被你打断时说的第一句话:基于上述模式的持续引导,温暖、先接情绪、给 2 分钟台阶"}
 
 最近活动:
 ${acts || '（无)'}
 专注约 ${Math.round(input.focusMinutes)} 分钟,分心约 ${Math.round(input.devMinutes)} 分钟。
-最近对话片段: ${input.chatExcerpt.slice(0, 400) || '（无)'}
-
-只输出反思文本本身(2-3 句),不要前缀、不要列表。`
+最近对话片段: ${input.chatExcerpt.slice(0, 400) || '（无)'}`
   try {
-    const note = (await input.llmComplete(prompt)).trim()
+    const raw = await input.llmComplete(prompt)
+    let parsed: { reflection?: string; nudge?: string }
+    try {
+      parsed = extractJsonObject<{ reflection?: string; nudge?: string }>(raw)
+    } catch {
+      // 非 JSON 输出:整段当反思,不动督促语
+      parsed = { reflection: raw.trim() }
+    }
+    const nudge = (parsed.nudge ?? '').trim()
+    if (nudge) await saveNudge(nudge)
+    const note = (parsed.reflection ?? '').trim()
     if (!note) return null
     const existing = await gatherMemory('reflections')
     const stamp = new Date().toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
@@ -192,27 +202,68 @@ const NUDGE_FALLBACKS = [
   '溜达够了吗?{min} 分钟了。把这窗口最小化,回到刚才那件事,只做 2 分钟。',
   '「{app}」先放一放?你的目标还等着呢,回来的门槛只有 2 分钟。'
 ]
+// 即时打断(配置为"立刻"/不到 1 分钟):不提时长,直接给台阶
+const NUDGE_INSTANT = [
+  '注意到你刚走神了。回来只用 2 分钟——先打开那个文档就好。',
+  '「{app}」先放一放?就做 2 分钟,做完允许停。',
+  '趁分心还小,拉回来最容易:只看一眼刚才那件事。'
+]
 let nudgeIdx = 0
 
-/** 生成一句督促语:先给零羞耻的兜底句(立即显示),再用 LLM 换成个性化的话。 */
-export async function buildNudge(
-  devMinutes: number,
-  appName: string,
-  llmComplete?: (prompt: string) => Promise<string>
-): Promise<{ instant: string; llm?: Promise<string | null> }> {
-  const tpl = NUDGE_FALLBACKS[nudgeIdx++ % NUDGE_FALLBACKS.length]
-  const instant = tpl.replace('{min}', String(Math.round(devMinutes))).replace('{app}', appName)
-  if (!llmComplete) return { instant }
-  const prompt = `你是学习导师${TUTOR_NAME}。用户已分心 ${Math.round(devMinutes)} 分钟,当前在「${appName}」。
-写一句 25 字内的督促。要求:温暖不评判;先轻接情绪(像知道他可能有点烦/累/怕开始),再给一个 2 分钟就能回来的最小动作(启动困难用"只打开/只看一眼"级别的台阶);不要说教、不要提术语。只输出这句话本身。`
-  return {
-    instant,
-    llm: llmComplete(prompt)
-      .then((s) => {
-        const t = s.trim()
-        return t && t.length <= 60 ? t : null
-      })
-      .catch(() => null)
+// ---------------------------------------------------------------------------
+// 常驻督促语:反思 tick 与心理反馈时由 LLM 预先更新,打断弹出时零 LLM 直接显示
+// ---------------------------------------------------------------------------
+
+export const MEM_NUDGE = 'core/nudge.md'
+let cachedNudge = ''
+
+/** 启动时从记忆载入上次预备好的督促语。 */
+export async function loadNudgeCache(): Promise<void> {
+  try {
+    const body = await memoryReadPage(MEM_NUDGE)
+    cachedNudge = (body ?? '').replace(/^#.*$/m, '').trim()
+  } catch {
+    cachedNudge = ''
+  }
+}
+
+export function getCachedNudge(): string {
+  return cachedNudge
+}
+
+export async function saveNudge(text: string): Promise<void> {
+  const t = text.trim().slice(0, 120)
+  if (!t) return
+  cachedNudge = t
+  void memoryWritePage(MEM_NUDGE, `# 当前督促语\n${t}`, '当前督促语').catch(() => {})
+}
+
+/** 兜底督促语(零 LLM):常驻督促语缺失时使用。 */
+export function buildNudgeFallback(devMinutes: number, appName: string): string {
+  const tpl =
+    devMinutes < 1
+      ? NUDGE_INSTANT[nudgeIdx++ % NUDGE_INSTANT.length]
+      : NUDGE_FALLBACKS[nudgeIdx++ % NUDGE_FALLBACKS.length]
+  return tpl.replace('{min}', String(Math.round(devMinutes))).replace('{app}', appName)
+}
+
+/**
+ * 心理反馈驱动的督促语更新:用户在打断面板写下"为什么不想学"后,
+ * 顺着他这层情绪重写下次的引导。返回新督促语(展示 + 常驻)。
+ */
+export async function updateNudgeFromFeedback(
+  feedback: string,
+  llmComplete: (prompt: string) => Promise<string>
+): Promise<string | null> {
+  const prompt = `你是学习导师${TUTOR_NAME}。用户在分心打断时写下心理反馈:「${feedback.trim().slice(0, 200)}」。
+结合他这层感受(累/怕/烦/抗拒),写一句下次他再分心时你说的引导(30 字内):先接住这层情绪,再给一个 2 分钟就能回来的最小台阶。只输出这句话本身。`
+  try {
+    const t = (await llmComplete(prompt)).trim().replace(/^[「"'【]|["'」】]$/g, '')
+    if (!t || t.length > 80) return null
+    await saveNudge(t)
+    return t
+  } catch {
+    return null
   }
 }
 

@@ -15,6 +15,7 @@ import { startPipeline, stopPipeline, onCardsChanged } from './ai/analyze'
 import { startMemoryServer, stopMemoryServer } from './memory/sidecar'
 import { bootstrapMemory } from './memory/client'
 import { seedKnowledge } from './ai/knowledge'
+import { loadNudgeCache } from './ai/tutor'
 import { supervisionSync, stopSupervision } from './supervision'
 import { startReflectionLoop, stopReflectionLoop } from './ai/reflect-tick'
 import { startCleanupSchedule, stopCleanupSchedule } from './cleanup'
@@ -149,6 +150,7 @@ if (!gotLock) {
       if (!ok) return
       await bootstrapMemory(getSettings().tutor.goal)
       await seedKnowledge()
+      await loadNudgeCache()
       startReflectionLoop()
     })
     supervisionSync()

@@ -213,7 +213,7 @@ export function registerIpc(win: BrowserWindow): void {
     supervision.stopToday()
     return true
   })
-  ipcMain.handle('supervision:preview', () => supervision.previewInterrupt())
+  ipcMain.handle('supervision:preview', (_e, strict?: boolean) => supervision.previewInterrupt(!!strict))
   ipcMain.handle('supervision:interruptState', () => supervision.getInterruptState())
 
   // -- Export ------------------------------------------------------------------

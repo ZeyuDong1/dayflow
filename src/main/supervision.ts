@@ -1,4 +1,4 @@
-import { BrowserWindow, Notification, app, powerMonitor } from 'electron'
+import { BrowserWindow, Notification, app, powerMonitor, screen } from 'electron'
 import path from 'path'
 import { getSettings } from './settings'
 import { todayKey } from './paths'
@@ -8,9 +8,15 @@ import {
   getForegroundInfoSync,
   getWindowGeom,
   isWindowUsable,
-  type ForegroundInfo
+  type ForegroundInfo,
+  type WindowGeom
 } from './foreground'
-import { buildNudge, saveFeedbackToMemory } from './ai/tutor'
+import {
+  buildNudgeFallback,
+  getCachedNudge,
+  saveFeedbackToMemory,
+  updateNudgeFromFeedback
+} from './ai/tutor'
 import { textComplete, resolveProvider } from './ai/providers'
 
 /**
@@ -23,13 +29,14 @@ import { textComplete, resolveProvider } from './ai/providers'
  * - 违规窗口被最小化或关闭、或切回学习,面板自动消失
  */
 
-const TICK_MS = 3000
+const TICK_MS = 1000 // "立刻"档要求秒级响应;纯本地 FFI 轮询,零 token
 const OVERLAY_POLL_MS = 800
 
 type Judge = 'learning' | 'non-learning' | 'neutral'
 
 interface Episode {
   hwnd: number
+  pid: number
   appName: string
   title: string
   startTs: number
@@ -39,6 +46,7 @@ interface Episode {
 }
 
 let tickTimer: NodeJS.Timeout | null = null
+let ticking = false
 let overlayTimer: NodeJS.Timeout | null = null
 let episode: Episode | null = null
 let breakUntil = 0
@@ -46,6 +54,12 @@ let pausedDayKey: string | null = null
 let interruptWin: BrowserWindow | null = null
 let lastPayload: Record<string, unknown> | null = null
 let previewUntil = 0 // 预览期间 tick 不自动关面板
+let overlayHwnd = 0 // 面板自身句柄,自识别用(标题判断有竞态)
+let calmSince = 0 // 进入平静(学习/中立)的时刻,持续平静才收面板
+let lastShowAt = 0 // 上次面板弹出时刻,重弹最小间隔用
+const CALM_LEARN_SEC = 8 // 持续学习这么久才算真回学习
+const CALM_NEUTRAL_SEC = 30 // 持续中立这么久才重置分心状态
+const RESHOW_GAP_MS = 30_000 // 两次弹出的最小间隔(防抖/防闪)
 
 function logEvent(type: string, appName: string | null, title: string | null, detail: string | null): void {
   try {
@@ -97,14 +111,143 @@ function closeInterrupt(): void {
   }
   if (interruptWin && !interruptWin.isDestroyed()) interruptWin.close()
   interruptWin = null
+  overlayHwnd = 0
 }
 
-function showInterrupt(ep: Episode, geom: { left: number; top: number; width: number; height: number; titleBarHeight: number }): void {
-  // 让出顶部标题栏:用户随时能点到底下 APP 的最小化/关闭
-  const x = geom.left
-  const y = geom.top + geom.titleBarHeight
-  const w = Math.max(360, geom.width)
-  const h = Math.max(260, geom.height - geom.titleBarHeight)
+// ---------------------------------------------------------------------------
+// 显示器物理↔DIP 映射:探针标定(不依赖有歧义的换算 API)
+// ---------------------------------------------------------------------------
+
+interface DisplayCal {
+  dip: { x: number; y: number; width: number; height: number } // DIP 矩形
+  physOrigin: { x: number; y: number } // 该 DIP 原点实测的物理原点
+  scale: number
+}
+
+let calCache: DisplayCal[] | null = null
+let calListenersBound = false
+
+function bindCalInvalidation(): void {
+  if (calListenersBound) return
+  calListenersBound = true
+  const invalidate = (): void => {
+    calCache = null
+  }
+  screen.on('display-metrics-changed', invalidate)
+  screen.on('display-added', invalidate)
+  screen.on('display-removed', invalidate)
+}
+
+/**
+ * 用隐形探针窗口标定每台显示器的 DIP→物理 映射:
+ * 在 DIP 原点放一个 8x8 无边框窗口,GetWindowRect 读回物理位置——
+ * 直接对 Electron 的窗口摆放做闭环测量,任何换算 API 的语义歧义都被绕开。
+ */
+function calibrateDisplays(): DisplayCal[] {
+  bindCalInvalidation()
+  if (calCache) return calCache
+  const cals: DisplayCal[] = []
+  for (const d of screen.getAllDisplays()) {
+    let physOrigin = {
+      x: Math.round(d.bounds.x * d.scaleFactor),
+      y: Math.round(d.bounds.y * d.scaleFactor)
+    }
+    try {
+      const probe = new BrowserWindow({
+        x: d.bounds.x,
+        y: d.bounds.y,
+        width: 8,
+        height: 8,
+        frame: false,
+        show: false,
+        skipTaskbar: true,
+        focusable: false
+      })
+      const g = getWindowGeom(Number(probe.getNativeWindowHandle().readBigUInt64LE(0)))
+      // 探针的客户区原点 = setBounds DIP 原点的真实物理映射
+      // (外框含隐形边框,实测偏 8px×缩放,必须用客户区)
+      if (g) physOrigin = { x: g.clientX, y: g.clientY }
+      probe.destroy()
+    } catch {
+      // 标定失败退回估算值
+    }
+    cals.push({ dip: d.bounds, physOrigin, scale: d.scaleFactor })
+  }
+  calCache = cals
+  return cals
+}
+
+/**
+ * 物理像素 → 逻辑像素,逐显示器精确换算:
+ *   dip = 显示器DIP原点 + (物理 − 该显示器实测物理原点) / 缩放
+ * screenToDipRect(null, …) 按主屏 DPI 统一缩放、nativeOrigin 并非物理
+ * 原点——两者在副屏不同缩放时都会偏(一台准一台不准的根因)。
+ */
+function physToDip(phys: {
+  x: number
+  y: number
+  width: number
+  height: number
+}): { x: number; y: number; width: number; height: number } {
+  const cals = calibrateDisplays()
+  const cx = phys.x + phys.width / 2
+  const cy = phys.y + phys.height / 2
+  const cal =
+    cals.find(
+      (c) =>
+        cx >= c.physOrigin.x &&
+        cx < c.physOrigin.x + Math.round(c.dip.width * c.scale) &&
+        cy >= c.physOrigin.y &&
+        cy < c.physOrigin.y + Math.round(c.dip.height * c.scale)
+    ) ?? cals[0]
+  return {
+    x: cal.dip.x + (phys.x - cal.physOrigin.x) / cal.scale,
+    y: cal.dip.y + (phys.y - cal.physOrigin.y) / cal.scale,
+    width: phys.width / cal.scale,
+    height: phys.height / cal.scale
+  }
+}
+
+/**
+ * 覆盖矩形(DIP):DWM 可见框横向全盖(可见边框也算应用的一部分),
+ * 顶部从客户区顶开始(让出标题栏),底部到可见框底。
+ * 可见框用 DWM 扩展边框——GetWindowRect 的外框含 ~8px×DPI 隐形边框,
+ * 高分屏上那道缝隙就是"没对准"的来源之一。
+ */
+function coverageDipFrom(geom: WindowGeom): { x: number; y: number; width: number; height: number } {
+  const phys = {
+    x: geom.frameLeft,
+    y: geom.clientY,
+    width: Math.max(1, geom.frameRight - geom.frameLeft),
+    height: Math.max(1, geom.frameBottom - geom.clientY)
+  }
+  const dip = physToDip(phys)
+  return {
+    x: Math.round(dip.x),
+    y: Math.round(dip.y),
+    width: Math.max(360, Math.round(dip.width)),
+    height: Math.max(260, Math.round(dip.height))
+  }
+}
+
+function showInterrupt(ep: Episode, geom: WindowGeom): void {
+  const bounds = coverageDipFrom(geom)
+  const naive = screen.screenToDipRect(
+    null,
+    {
+      x: geom.frameLeft,
+      y: geom.clientY,
+      width: Math.max(1, geom.frameRight - geom.frameLeft),
+      height: Math.max(1, geom.frameBottom - geom.clientY)
+    }
+  ) // 对照:主屏统一缩放(副屏会偏)
+  const { x, y, width: w, height: h } = bounds
+  const topo = calibrateDisplays()
+    .map((c) => `${c.scale}@phys${c.physOrigin.x},${c.physOrigin.y}→dip(${c.dip.x},${c.dip.y})`)
+    .join(' | ')
+  console.log(
+    `[supervision] bounds frame=${geom.frameLeft},${geom.frameTop}..${geom.frameRight},${geom.frameBottom} clientTop=${geom.clientY} → per-monitor=${x},${y} ${w}x${h} naive=${naive.x},${naive.y} ${naive.width}x${naive.height} displays=[${topo}]`
+  )
 
   if (interruptWin && !interruptWin.isDestroyed()) {
     interruptWin.setBounds({ x, y, width: w, height: h })
@@ -153,9 +296,22 @@ function showInterrupt(ep: Episode, geom: { left: number; top: number; width: nu
     }
   })
   interruptWin = win
+  // 记录面板自身 hwnd:自识别必须用句柄——页面 <title> 在 React 挂载前
+  // 会把窗口标题顶成 'Dayflow',标题判断有竞态(曾导致面板自关闪烁)
+  try {
+    overlayHwnd = Number(win.getNativeWindowHandle().readBigUInt64LE(0))
+  } catch {
+    overlayHwnd = 0
+  }
+  lastShowAt = Date.now()
 
-  // 面板与违规窗口绑定:最小化/关闭/切走 → 自动消失
+  // 面板与违规窗口绑定:违规窗口最小化/关闭 → 自动消失;
+  // 连续两次观察到"第三方前台"才判切走(目标应用自己的弹窗/右键菜单
+  // 按 pid 归为同一方,不算切走)。
+  // 同时面板实时跟随目标窗口的移动/缩放(拖不走),并纠正任何边界漂移
+  // (如跨屏 DPI 变更时系统对面板矩形的改写)。
   const targetHwnd = ep.hwnd
+  const targetPid = ep.pid
   let awayStrikes = 0
   overlayTimer = setInterval(() => {
     if (!interruptWin || interruptWin.isDestroyed()) return
@@ -164,13 +320,29 @@ function showInterrupt(ep: Episode, geom: { left: number; top: number; width: nu
       closeInterrupt()
       return
     }
+    // 跟随目标窗口 + 纠偏:目标几何变了(拖动/缩放/最大化)→ 面板跟上;
+    // 目标没变而面板边界偏离意图(如 DPI 变更被系统改写)→ 纠正回来
+    const g = getWindowGeom(targetHwnd)
+    if (g) {
+      const want = coverageDipFrom(g)
+      const cur = interruptWin.getBounds()
+      const drifted =
+        Math.abs(cur.x - want.x) > 2 ||
+        Math.abs(cur.y - want.y) > 2 ||
+        Math.abs(cur.width - want.width) > 2 ||
+        Math.abs(cur.height - want.height) > 2
+      if (drifted) {
+        const moved = Math.abs(cur.x - want.x) > 2 || Math.abs(cur.y - want.y) > 2
+        interruptWin.setBounds(want)
+        if (moved) logEvent('interrupt-follow', ep.appName, ep.title, `→ ${want.x},${want.y} ${want.width}x${want.height}`)
+      }
+    }
     // 预览期:只演示"最小化/关闭即消失",切走不关(方便慢慢看效果)
     if (Date.now() < previewUntil) return
     const fg = getForegroundInfoSync()
     if (!fg) return
-    // 面板自己、自家主窗口拿到焦点都不算"切走";连续两次观察到第三方前台才关
     const selfOrTarget =
-      fg.hwnd === targetHwnd || fg.windowTitle === '学习监督' || /dayflow/i.test(fg.appName)
+      fg.hwnd === targetHwnd || fg.hwnd === overlayHwnd || fg.pid === targetPid
     awayStrikes = selfOrTarget ? 0 : awayStrikes + 1
     if (awayStrikes >= 2) {
       logEvent('interrupt-auto-close', ep.appName, ep.title, '已切离违规窗口')
@@ -182,43 +354,53 @@ function showInterrupt(ep: Episode, geom: { left: number; top: number; width: nu
 async function interruptPayload(ep: Episode): Promise<Record<string, unknown>> {
   const settings = getSettings()
   const devMinutes = (Date.now() - ep.startTs) / 60000
-  const llm = resolveProvider().ready ? (p: string) => textComplete(p, 'tutor-nudge') : undefined
-  const nudge = await buildNudge(devMinutes, ep.appName, llm)
-  const payload: Record<string, unknown> = {
+  // 打断瞬间零 LLM:直接显示反思/反馈时刻预备好的常驻督促语,缺失才用兜底句
+  const nudge = getCachedNudge() || buildNudgeFallback(devMinutes, ep.appName)
+  return {
     goal: settings.tutor.goal,
     appName: ep.appName,
     title: ep.title,
     devMinutes: Math.round(devMinutes),
     breakMinutes: settings.tutor.breakMinutes,
     soundEnabled: settings.tutor.soundEnabled,
-    nudge: nudge.instant
+    nudge
   }
-  if (nudge.llm) {
-    void nudge.llm.then((line) => {
-      if (line && interruptWin && !interruptWin.isDestroyed()) {
-        interruptWin.webContents.send('supervision:interrupt', { ...payload, nudge: line })
-      }
-    })
-  }
-  return payload
 }
 
 // ---------------------------------------------------------------------------
 // 面板动作(来自渲染层 IPC)
 // ---------------------------------------------------------------------------
 
-export async function submitFeedback(text: string): Promise<string> {
-  logEvent('feedback', episode?.appName ?? null, episode?.title ?? null, text.slice(0, 200))
-  void saveFeedbackToMemory(text).catch(() => {})
-  const ack = '记下了。回来只用 2 分钟——先做最小的那一步。'
+const ACK_FALLBACK = '记下了。回来只用 2 分钟——先做最小的那一步。'
+
+function pushToPanel(nudge: string, closeMs: number | null): void {
+  lastPayload = { ...(lastPayload ?? {}), nudge, done: true }
   if (interruptWin && !interruptWin.isDestroyed()) {
-    interruptWin.webContents.send('supervision:interrupt', { ...(lastPayload ?? {}), nudge: ack, done: true })
+    interruptWin.webContents.send('supervision:interrupt', lastPayload)
+  }
+  if (closeMs !== null) {
     setTimeout(() => {
       closeInterrupt()
       if (episode) episode.startTs = Date.now() // 回来后重新计时
-    }, 1800)
+    }, closeMs)
   }
-  return ack
+}
+
+export async function submitFeedback(text: string): Promise<string> {
+  logEvent('feedback', episode?.appName ?? null, episode?.title ?? null, text.slice(0, 200))
+  void saveFeedbackToMemory(text).catch(() => {})
+  // 先给即时回执,再让 LLM 按反馈重写"下次说的引导"并更新面板展示——
+  // 更新结果常驻,下次打断弹出时直接显示,不再单独等 LLM。
+  pushToPanel('记下了,让小舟想一想该怎么陪你回来…', null)
+  const llm = resolveProvider().ready ? (p: string) => textComplete(p, 'tutor-feedback') : undefined
+  if (llm) {
+    void updateNudgeFromFeedback(text, llm)
+      .then((nudge) => pushToPanel(nudge ?? ACK_FALLBACK, 5000))
+      .catch(() => pushToPanel(ACK_FALLBACK, 1800))
+  } else {
+    pushToPanel(ACK_FALLBACK, 1800)
+  }
+  return ACK_FALLBACK
 }
 
 export function takeBreak(minutes?: number): void {
@@ -254,14 +436,19 @@ export function supervisionStatus(): {
   }
 }
 
-/** 设置页"预览强打断":对当前前台窗口立即演示面板效果。 */
-export async function previewInterrupt(): Promise<boolean> {
+/**
+ * 设置页"预览强打断":对当前前台窗口立即演示面板效果。
+ * strict=true 时走真实模式判定(不设预览保护)——回归测试用:
+ * 验证面板不会被 tick 的平静判定误关。
+ */
+export async function previewInterrupt(strict = false): Promise<boolean> {
   const fg = getForegroundInfoSync()
   if (!fg) return false
   const geom = getWindowGeom(fg.hwnd)
   if (!geom) return false
   const ep: Episode = {
     hwnd: fg.hwnd,
+    pid: fg.pid,
     appName: fg.appName,
     title: fg.windowTitle,
     startTs: Date.now() - 185_000, // 演示按"已分心 3 分钟"呈现
@@ -270,10 +457,11 @@ export async function previewInterrupt(): Promise<boolean> {
     lastInterruptAt: Date.now()
   }
   episode = ep
+  calmSince = 0
   lastPayload = await interruptPayload(ep)
   showInterrupt(ep, geom)
-  previewUntil = Date.now() + 120_000
-  logEvent('interrupt-preview', ep.appName, ep.title, null)
+  previewUntil = strict ? 0 : Date.now() + 120_000
+  logEvent('interrupt-preview', ep.appName, ep.title, strict ? 'strict' : null)
   return true
 }
 
@@ -290,6 +478,16 @@ function isPaused(): boolean {
 }
 
 async function tick(): Promise<void> {
+  if (ticking) return // 串行化:防重叠 tick 抢跑打断逻辑
+  ticking = true
+  try {
+    await tickInner()
+  } finally {
+    ticking = false
+  }
+}
+
+async function tickInner(): Promise<void> {
   const settings = getSettings()
   if (!settings.tutor.enabled) return
   if (Date.now() < breakUntil) return
@@ -298,23 +496,35 @@ async function tick(): Promise<void> {
   const idleSec = powerMonitor.getSystemIdleTime()
   const fg = getForegroundInfoSync()
   if (!fg) return
+  // 面板自身在前台绝不改状态(句柄精确识别;标题判断曾因页面 <title>
+  // 竞态把面板误判成"已回学习",造成自关→重弹闪烁)
+  if (overlayHwnd && fg.hwnd === overlayHwnd) return
 
   const idle = idleSec > settings.capture.idleThresholdSec
   const verdict: Judge = idle ? 'neutral' : judge(fg)
 
   if (verdict !== 'non-learning') {
-    if (episode && interruptWin && !interruptWin.isDestroyed() && Date.now() > previewUntil) {
-      // 已经回到学习/离开 → 面板自动消失
-      closeInterrupt()
-      logEvent('back-to-study', episode.appName, episode.title, verdict)
+    // 平静确认:视频/浏览器标题变化会让分类瞬时翻转,抖动不关面板,
+    // 持续平静(学习 8s / 中立 30s)才收——这是防闪的核心。
+    if (!calmSince) calmSince = Date.now()
+    const calmSec = (Date.now() - calmSince) / 1000
+    const learnDone = verdict === 'learning' && calmSec >= CALM_LEARN_SEC
+    const neutralDone = calmSec >= CALM_NEUTRAL_SEC
+    if (learnDone || neutralDone) {
+      if (episode && interruptWin && !interruptWin.isDestroyed() && Date.now() > previewUntil) {
+        closeInterrupt()
+        logEvent('back-to-study', episode.appName, episode.title, `${verdict} ${Math.round(calmSec)}s`)
+      }
+      episode = null
     }
-    episode = null
     return
   }
+  calmSince = 0
 
   if (!episode || episode.hwnd !== fg.hwnd) {
     episode = {
       hwnd: fg.hwnd,
+      pid: fg.pid,
       appName: fg.appName,
       title: fg.windowTitle,
       startTs: Date.now(),
@@ -327,13 +537,16 @@ async function tick(): Promise<void> {
 
   const devSec = (Date.now() - episode.startTs) / 1000
 
-  // 轻提醒:桌面通知,点击 = 延迟一次(计时重置)
-  if (!episode.gentleSent && !episode.postponed && devSec >= settings.tutor.gentleSec) {
+  // 轻提醒:桌面通知,点击 = 延迟一次(计时重置)。
+  // 仅当轻提醒时间严格早于强打断时才有意义;两者相同(含都为"立刻")= 只做强打断。
+  const gentleEnabled = settings.tutor.gentleSec < settings.tutor.interruptSec
+  if (gentleEnabled && !episode.gentleSent && !episode.postponed && devSec >= settings.tutor.gentleSec) {
     episode.gentleSent = true
     try {
+      const devLabel = devSec < 60 ? `${Math.max(1, Math.round(devSec))} 秒` : `${Math.round(devSec / 60)} 分钟`
       const n = new Notification({
         title: '学习小舟',
-        body: `已经分心 ${Math.round(devSec / 60)} 分钟了。回来只用 2 分钟,点击稍后提醒。`
+        body: `已经分心 ${devLabel}了。回来只用 2 分钟,点击稍后提醒。`
       })
       n.on('click', () => {
         if (episode) {
@@ -350,10 +563,16 @@ async function tick(): Promise<void> {
     }
   }
 
-  // 强打断 / 重复
+  // 强打断 / 重复:面板已开时只移位/刷新内容(同一次打断的延续,立即跟随
+  // 新违规窗口);面板已关时才重新弹出,且受重复间隔 + 两次弹出最小间隔
+  // 双重门控(防抖防闪)。
+  const panelOpen = !!interruptWin && !interruptWin.isDestroyed()
+  const repeatDue =
+    Date.now() - episode.lastInterruptAt >= Math.max(60, settings.tutor.repeatSec) * 1000
+  const gapDue = Date.now() - lastShowAt >= RESHOW_GAP_MS
   const due =
     devSec >= settings.tutor.interruptSec &&
-    Date.now() - episode.lastInterruptAt >= settings.tutor.repeatSec * 1000
+    (panelOpen ? episode.lastInterruptAt === 0 || repeatDue : repeatDue && gapDue)
   if (due) {
     const geom = getWindowGeom(fg.hwnd)
     if (geom) {

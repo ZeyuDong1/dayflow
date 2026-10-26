@@ -656,15 +656,17 @@ export default function SettingsPage({ onSaved }: { onSaved: () => void }): Reac
           <div className="settings-row">
             <div>
               <div className="settings-row-label">轻提醒</div>
-              <div className="settings-row-help">分心持续超过此时长，桌面通知轻推（可延迟一次）。</div>
+              <div className="settings-row-help">
+                分心持续超过此时长，桌面通知轻推（可延迟一次）。与强打断时间相同则跳过轻提醒，只做强打断。
+              </div>
             </div>
             <select
-              value={settings.tutor.gentleSec / 60}
-              onChange={(e) => patch({ tutor: { gentleSec: Number(e.target.value) * 60 } })}
+              value={settings.tutor.gentleSec}
+              onChange={(e) => patch({ tutor: { gentleSec: Number(e.target.value) } })}
             >
-              {[1, 2, 3, 5, 10].map((m) => (
-                <option key={m} value={m}>
-                  {m} 分钟
+              {[0, 10, 30, 60, 120, 180, 300, 600].map((s) => (
+                <option key={s} value={s}>
+                  {s === 0 ? '立刻' : s < 60 ? `${s} 秒` : `${s / 60} 分钟`}
                 </option>
               ))}
             </select>
@@ -675,12 +677,12 @@ export default function SettingsPage({ onSaved }: { onSaved: () => void }): Reac
               <div className="settings-row-help">超过此时长仍未回到学习，置顶弹窗 + 提示音。</div>
             </div>
             <select
-              value={settings.tutor.interruptSec / 60}
-              onChange={(e) => patch({ tutor: { interruptSec: Number(e.target.value) * 60 } })}
+              value={settings.tutor.interruptSec}
+              onChange={(e) => patch({ tutor: { interruptSec: Number(e.target.value) } })}
             >
-              {[2, 3, 5, 10, 15].map((m) => (
-                <option key={m} value={m}>
-                  {m} 分钟
+              {[0, 10, 30, 60, 120, 180, 300, 600].map((s) => (
+                <option key={s} value={s}>
+                  {s === 0 ? '立刻' : s < 60 ? `${s} 秒` : `${s / 60} 分钟`}
                 </option>
               ))}
             </select>
