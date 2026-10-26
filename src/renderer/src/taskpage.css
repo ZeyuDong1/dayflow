@@ -838,3 +838,39 @@
 /* 队列行拖拽态 */
 .tp-q-row[draggable='true'] { cursor: grab; }
 .tp-q-row:active { cursor: grabbing; }
+
+/* ---- 可折叠分区头（▸ 标题 + 计数徽章） ---- */
+
+.tp-sec-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.tp-sec-toggle:hover .tp-sec-title {
+  color: var(--accent-deep);
+}
+
+.tp-chev {
+  color: var(--text-faint);
+  font-size: 11px;
+  display: inline-block;
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.tp-chev.open {
+  transform: rotate(90deg);
+}
+
+.tp-count {
+  font-size: 11px;
+  color: var(--text-dim);
+  background: var(--inset);
+  border-radius: 999px;
+  padding: 1px 8px;
+  line-height: 1.4;
+}

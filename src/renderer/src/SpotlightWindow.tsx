@@ -290,7 +290,7 @@ function BulletRow({
 }: BulletRowProps) {
   const { task, children, depth } = node
   const project = projects.find((p) => p.id === task.project_id)
-  const projectColor = project?.color || '#64748b'
+  const projectColor = project?.color || '#b9a58c'
   const isActive = task.id === activeNodeId
   const isEditing = task.id === editingNodeId
   const isFocused = task.status === 'active' && task.timer_type === 'focus'
@@ -1285,7 +1285,7 @@ export default function SpotlightWindow() {
       {/* 1. 输入栏 */}
       <div className="sw-inputbar">
         <div className="flex items-center gap-3">
-          <span style={{ color: input ? '#10B981' : '#94A3B8', transition: 'color .15s', display: 'flex' }}>
+          <span style={{ color: input ? 'var(--accent)' : 'var(--text-faint)', transition: 'color .15s', display: 'flex' }}>
             <SearchIco size={20} />
           </span>
           <input
@@ -1314,7 +1314,7 @@ export default function SpotlightWindow() {
             {activeTask && (
               <div
                 className="sw-focus-card"
-                style={{ borderLeft: `4px solid ${projects.find((p) => p.id === activeTask.project_id)?.color || '#10B981'}` }}
+                style={{ borderLeft: `4px solid ${projects.find((p) => p.id === activeTask.project_id)?.color || 'var(--accent)'}` }}
               >
                 <div>
                   <div className="sw-focus-meta">
@@ -1325,9 +1325,9 @@ export default function SpotlightWindow() {
                         <span
                           className="sw-project-chip"
                           style={{
-                            backgroundColor: `${pr?.color || '#334155'}22`,
-                            color: pr?.color || '#94A3B8',
-                            border: `1px solid ${pr?.color || '#334155'}44`,
+                            backgroundColor: `${pr?.color || '#b9a58c'}22`,
+                            color: pr?.color || '#8a7e6c',
+                            border: `1px solid ${pr?.color || '#b9a58c'}44`,
                           }}
                         >
                           #{pr?.name || 'Inbox'}
@@ -1350,7 +1350,7 @@ export default function SpotlightWindow() {
                     <div
                       key={t.id}
                       className="sw-wait-row"
-                      style={{ borderLeft: `4px solid ${pr?.color || '#F59E0B'}` }}
+                      style={{ borderLeft: `4px solid ${pr?.color || '#d97706'}` }}
                       onClick={() => window.dayflow.todo.startFocus(t.id)}
                       onContextMenu={(e) => {
                         e.preventDefault()
@@ -1358,7 +1358,7 @@ export default function SpotlightWindow() {
                       }}
                     >
                       <div className="sw-wait-left">
-                        <span style={{ color: pr?.color || '#F59E0B', display: 'flex' }}>
+                        <span style={{ color: pr?.color || '#d97706', display: 'flex' }}>
                           <ClockIco size={16} />
                         </span>
                         <div>
@@ -1366,7 +1366,7 @@ export default function SpotlightWindow() {
                           <div className="sw-wait-proj">{pr?.name || 'Inbox'}</div>
                         </div>
                       </div>
-                      <div className="sw-wait-timer" style={{ color: pr?.color || '#F59E0B' }}>
+                      <div className="sw-wait-timer" style={{ color: pr?.color || '#d97706' }}>
                         - <CountDown target={t.target_timestamp} />
                       </div>
                     </div>
@@ -1429,7 +1429,7 @@ export default function SpotlightWindow() {
                     onClick={() => confirmGpuSelection(gpu)}
                   >
                     <div className="sw-gpu-left">
-                      <div className="sw-gpu-dot" style={{ backgroundColor: busyTask ? '#22c55e' : '#64748b' }} />
+                      <div className="sw-gpu-dot" style={{ backgroundColor: busyTask ? 'var(--green)' : 'var(--text-faint)' }} />
                       <span className="sw-gpu-name">{gpu.name}</span>
                       {busyTask && <span className="sw-gpu-busy">Busy: {busyTask.title}</span>}
                     </div>
@@ -1685,7 +1685,7 @@ export default function SpotlightWindow() {
                     }}
                   >
                     {idx < 9 && <span className="sw-keychip">^{idx + 1}</span>}
-                    <div className="sw-dot" style={{ backgroundColor: p.color || '#334155' }} />
+                    <div className="sw-dot" style={{ backgroundColor: p.color || '#b9a58c' }} />
                     <span className="sw-project-name">{p.name}</span>
                     {idx === projectHighlightIdx && <span className="sw-enter-chip">↵</span>}
                   </div>

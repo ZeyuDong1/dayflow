@@ -118,7 +118,27 @@ export default function TaskPage(): React.ReactElement {
   const [gpuAssign, setGpuAssign] = useState<Record<number, { taskId: number | ''; minutes: number }>>({})
 
   // 轻量项目管理
-  const [showProjMgr, setShowProjMgr] = useState(false)
+  // 分区折叠状态（localStorage 持久化；管理类分区默认收起，降低视觉噪音）
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>(() => {
+    try {
+      const raw = localStorage.getItem('tp-sections')
+      if (raw) return JSON.parse(raw) as Record<string, boolean>
+    } catch {
+      /* 忽略损坏的持久化数据，走默认值 */
+    }
+    return { wait: true, queue: true, gpu: false, ai: false, remind: false, proj: false }
+  })
+  const toggleSection = useCallback((key: string) => {
+    setOpenSections((s) => {
+      const next = { ...s, [key]: !s[key] }
+      try {
+        localStorage.setItem('tp-sections', JSON.stringify(next))
+      } catch {
+        /* 忽略写入失败 */
+      }
+      return next
+    })
+  }, [])
   const [newProj, setNewProj] = useState<{ name: string; color: string }>({ name: '', color: PROJECT_COLORS[0] })
   const [editProj, setEditProj] = useState<{ id: number; name: string } | null>(null)
   const [colorPickerFor, setColorPickerFor] = useState<number | null>(null)
@@ -512,6 +532,38 @@ export default function TaskPage(): React.ReactElement {
 
   // ---- 渲染辅助 ----------------------------------------------------------
 
+  /** 统一的可折叠分区头：▸ 标题 + 计数徽章 + 可选说明/动作。 */
+  const secHead = (
+    key: string,
+    title: string,
+    count: number | null,
+    hint?: string,
+    action?: React.ReactNode
+  ): React.ReactElement => (
+    <div className="tp-sec-head">
+      <button className="tp-sec-toggle" onClick={() => toggleSection(key)}>
+        <span className={`tp-chev ${openSections[key] ? 'open' : ''}`}>▸</span>
+        <h3 className="tp-sec-title">{title}</h3>
+        {count != null && count > 0 && <span className="tp-count">{count}</span>}
+      </button>
+      {hint && <span className="tp-dim">{hint}</span>}
+      {action ?? null}
+    </div>
+  )
+
+  /** 队列节点总数（含子任务）。 */
+  const queueCount = useMemo(() => {
+    let n = 0
+    const walk = (nodes: TaskNode<TaskRow>[]): void => {
+      for (const node of nodes) {
+        n += 1
+        walk(node.children)
+      }
+    }
+    for (const g of queueGroups) walk(g.nodes)
+    return n
+  }, [queueGroups])
+
   const focusSeconds = activeTask
     ? (activeTask.total_duration ?? 0) +
       (activeTask.started_at != null ? Math.max(0, Math.floor((now - Date.parse(activeTask.started_at)) / 1000)) : 0)
@@ -561,7 +613,7 @@ export default function TaskPage(): React.ReactElement {
             {t.title || '（无标题）'}
           </span>
           {bangs > 0 && <span className="tp-bang" title={`bang 优先级 ×${bangs}`}>{'!'.repeat(Math.min(bangs, 5))}</span>}
-          {t.total_duration > 0 && <span className="tp-dim">{Math.max(1, Math.round(t.total_duration / 60))}m logged</span>}
+          {t.total_duration > 0 && <span className="tp-dim">{Math.max(1, Math.round(t.total_duration / 60))}m</span>}
           {t.tag && <span className="tp-tag">#{t.tag}</span>}
           <span className={`tp-ops ${deleteConfirmId === t.id || countdownFor === t.id ? 'always' : ''}`}>
             {deleteConfirmId === t.id ? (
@@ -693,16 +745,14 @@ export default function TaskPage(): React.ReactElement {
           )}
         </div>
 
-        {/* 2. Paused / Waiting 网格 */}
+        {/* 2. Paused / Waiting 网格（可折叠） */}
         <div className="tp-card">
-          <div className="tp-sec-head">
-            <h3 className="tp-sec-title">Paused / Waiting</h3>
-            <span className="tp-dim">点击卡片 = 开始专注</span>
-          </div>
-          {waitingStandard.length === 0 ? (
-            <div className="tp-empty">没有挂起中的标准任务</div>
-          ) : (
-            <div className="tp-wait-grid">
+          {secHead('wait', '挂起等待', waitingStandard.length, '点击卡片 = 开始专注')}
+          {openSections.wait &&
+            (waitingStandard.length === 0 ? (
+              <div className="tp-empty">没有挂起中的标准任务</div>
+            ) : (
+              <div className="tp-wait-grid">
               {waitingStandard.map((t) => (
                 <div key={t.id} className="tp-wait-card" title="点击开始专注" onClick={() => focusTask(t.id)}>
                   <span className="tp-wait-strip" style={{ background: projectColor(t.project_id) }} />
@@ -712,7 +762,7 @@ export default function TaskPage(): React.ReactElement {
                 </div>
               ))}
             </div>
-          )}
+            ))}
         </div>
 
         {/* 3. 过期软提醒横幅 */}
@@ -749,16 +799,14 @@ export default function TaskPage(): React.ReactElement {
           </div>
         )}
 
-        {/* 4. Next Actions 队列 */}
+        {/* 4. Next Actions 队列（可折叠） */}
         <div className="tp-card">
-          <div className="tp-sec-head">
-            <h3 className="tp-sec-title">Next Actions</h3>
-            <span className="tp-dim">按项目分组 · 子任务缩进 · bang 优先级排序</span>
-          </div>
-          {queueGroups.length === 0 ? (
-            <div className="tp-empty">暂无 Next Action</div>
-          ) : (
-            queueGroups.map((g) => (
+          {secHead('queue', '下一步', queueCount, '拖拽嵌套子任务 · ! 越多越优先')}
+          {openSections.queue &&
+            (queueGroups.length === 0 ? (
+              <div className="tp-empty">暂无 Next Action</div>
+            ) : (
+              queueGroups.map((g) => (
               <div
                 key={g.projectId ?? 'inbox'}
                 className="tp-q-group"
@@ -786,21 +834,33 @@ export default function TaskPage(): React.ReactElement {
                 {g.nodes.map((n) => renderQueueRow(n, 0))}
               </div>
             ))
-          )}
+            ))}
         </div>
       </div>
 
       {/* 5. 右侧栏 */}
       <aside className="tp-side">
-        {/* GPUs */}
+        {/* GPUs（可折叠；新建按钮在收起时先展开） */}
         <div className="tp-card">
-          <div className="tp-sec-head">
-            <h3 className="tp-sec-title">GPUs</h3>
-            <button className="tp-mini" title="新建 GPU 卡" onClick={() => setAddingGpu((v) => !v)}>
+          {secHead(
+            'gpu',
+            'GPU',
+            gpus.length,
+            undefined,
+            <button
+              className="tp-mini"
+              title="新建 GPU 卡"
+              onClick={() => {
+                if (!openSections.gpu) toggleSection('gpu')
+                setAddingGpu((v) => !v)
+              }}
+            >
               ＋ 新建
             </button>
-          </div>
-          {addingGpu && (
+          )}
+          {openSections.gpu && (
+            <>
+              {addingGpu && (
             <div className="tp-gpu-assign" style={{ borderTop: 'none', paddingTop: 0, marginBottom: 8 }}>
               <input
                 className="tp-inline-input"
@@ -893,19 +953,19 @@ export default function TaskPage(): React.ReactElement {
                 )
               })}
             </div>
+              )}
+            </>
           )}
         </div>
 
-        {/* AI Reminders */}
+        {/* AI Reminders（可折叠） */}
         <div className="tp-card">
-          <div className="tp-sec-head">
-            <h3 className="tp-sec-title">AI Reminders</h3>
-            <span className="tp-dim">{aiCards.length}/20</span>
-          </div>
-          {aiCards.length === 0 ? (
-            <div className="tp-empty">暂无 AI 提醒（webhook 推送后出现在这里）</div>
-          ) : (
-            <div className="tp-ai-list">
+          {secHead('ai', 'AI 提醒', aiCards.length)}
+          {openSections.ai &&
+            (aiCards.length === 0 ? (
+              <div className="tp-empty">暂无 AI 提醒（webhook 推送后出现在这里）</div>
+            ) : (
+              <div className="tp-ai-list">
               {aiCards.map((c) => (
                 <div key={c.id} className="tp-ai-card">
                   <span className={`tp-ai-dot st-${c.status}`} title={c.status}>
@@ -931,19 +991,17 @@ export default function TaskPage(): React.ReactElement {
                 </div>
               ))}
             </div>
-          )}
+            ))}
         </div>
 
-        {/* 提醒倒计时 */}
+        {/* 提醒倒计时（可折叠） */}
         <div className="tp-card">
-          <div className="tp-sec-head">
-            <h3 className="tp-sec-title">提醒</h3>
-            <span className="tp-dim">✕ 取消倒计时</span>
-          </div>
-          {reminderCountdowns.length === 0 ? (
-            <div className="tp-empty">暂无软提醒倒计时</div>
-          ) : (
-            reminderCountdowns.map((t) => (
+          {secHead('remind', '提醒倒计时', reminderCountdowns.length, '✕ 取消倒计时')}
+          {openSections.remind &&
+            (reminderCountdowns.length === 0 ? (
+              <div className="tp-empty">暂无软提醒倒计时</div>
+            ) : (
+              reminderCountdowns.map((t) => (
               <div key={t.id} className="tp-rem-row">
                 <span className="tp-rem-title" title={t.title}>
                   {t.title}
@@ -961,18 +1019,22 @@ export default function TaskPage(): React.ReactElement {
                 </button>
               </div>
             ))
-          )}
+            ))}
         </div>
       </aside>
 
       {/* 6. 轻量项目管理 */}
       <div className="tp-bottom">
         <div className="tp-proj-mgr">
-          <button className="tp-proj-toggle" onClick={() => setShowProjMgr((v) => !v)}>
-            <span>{showProjMgr ? '▾' : '▸'}</span> 任务项目管理
-            <span className="tp-dim">（名称 / 颜色 / 删除，任务项目独立于类型树）</span>
-          </button>
-          {showProjMgr && (
+          <div className="tp-sec-head">
+            <button className="tp-sec-toggle" onClick={() => toggleSection('proj')}>
+              <span className={`tp-chev ${openSections.proj ? 'open' : ''}`}>▸</span>
+              <h3 className="tp-sec-title">任务项目管理</h3>
+              {projects.length > 0 && <span className="tp-count">{projects.length}</span>}
+            </button>
+            <span className="tp-dim">独立于类型树 · 名称 / 颜色 / 删除</span>
+          </div>
+          {openSections.proj && (
             <div className="tp-proj-body">
               <div className="tp-proj-row">
                 <span className="tp-swatch" style={{ background: newProj.color }} />
