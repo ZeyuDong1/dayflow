@@ -3529,3 +3529,12 @@ input[type='range']::-webkit-slider-thumb:active {
 .ow-static .ow-marquee-track > span[aria-hidden] { display: none; }
 .ow-static .ow-focus-title { font-size: 1em; }
 .ow-focus-title { font-size: 1em !important; }
+
+/* 独立小窗路由：页面底强制透明（:has 与时序无关，必中） */
+body:has(.ow-root), body:has(.sw-root), body:has(.rw-root),
+html:has(.ow-root), html:has(.sw-root), html:has(.rw-root) {
+  background: transparent !important;
+}
+
+/* 独立小窗路由类：渲染前挂上，必中 */
+body.route-floating { background: transparent !important; }

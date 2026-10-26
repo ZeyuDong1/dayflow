@@ -13,6 +13,13 @@ const isReminder = window.location.hash.startsWith('#/reminder')
 const isSpotlight = window.location.hash.startsWith('#/spotlight')
 const isOverlay = window.location.hash.startsWith('#/overlay')
 
+// 独立小窗路由：渲染前同步置透明（body/html，覆盖主应用奶油渐变底）
+if (isReminder || isSpotlight || isOverlay) {
+  document.documentElement.style.background = 'transparent'
+  document.body.style.background = 'transparent'
+  document.body.classList.add('route-floating')
+}
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     {isInterrupt ? (
