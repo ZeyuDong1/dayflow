@@ -3775,29 +3775,30 @@ input[type='range']::-webkit-slider-thumb:active {
   50% { opacity: 1; }
 }
 .ow-marquee { flex: 1; overflow: hidden; min-width: 0; }
+/* 传送带(EpochToDo 对齐):每份拷贝 minWidth>=视口、无 gap,track 每周期平移
+   恰好实测的一个 cell(--marquee-cell),尾部出右边的同时下一份头部进左边——无缝无跳 */
 .ow-marquee-track {
-  display: inline-flex; gap: 2em; white-space: nowrap;
-  animation: ow-scroll var(--marquee-duration, 4s) linear infinite;
+  display: flex; width: max-content; white-space: nowrap;
+  animation: ow-scroll var(--marquee-duration, 10s) linear infinite;
+  will-change: transform;
 }
 @keyframes ow-scroll {
-  from { transform: translateX(0); }
-  to { transform: translateX(-50%); }
+  from { transform: translateX(calc(-1 * var(--marquee-cell, 120px))); }
+  to { transform: translateX(0); }
+}
+.ow-marquee-cell {
+  display: inline-flex; align-items: center; flex-shrink: 0; white-space: nowrap;
+}
+/* 辉光呼吸挂标题本身(淡色 prefix 不发光) */
+.ow-glow-title {
+  text-shadow: 0 0 var(--focus-glow-radius, 6px) currentColor;
+  animation: ow-glow var(--focus-glow-speed, 3s) ease-in-out infinite;
 }
 @media (prefers-reduced-motion: reduce) {
   .ow-glow, .ow-overdue, .ow-marquee-track { animation: none !important; }
 }
-/* 呼吸独立化:辉光此前被 track 的滚动动画同属性覆盖、又被 static 的 animation:none 连杀——
-   现在滚动与呼吸作为逗号双动画共存;滚动关闭(static)时呼吸照常,层级观感不变 */
-.ow-marquee-track.ow-glow {
-  animation:
-    ow-scroll var(--marquee-duration, 4s) linear infinite,
-    ow-glow var(--focus-glow-speed, 3s) ease-in-out infinite;
-}
-.ow-static .ow-marquee-track.ow-glow {
-  animation: ow-glow var(--focus-glow-speed, 3s) ease-in-out infinite !important;
-}
 @media (prefers-reduced-motion: reduce) {
-  .ow-marquee-track.ow-glow, .ow-static .ow-marquee-track.ow-glow { animation: none !important; }
+  .ow-glow, .ow-glow-title, .ow-overdue, .ow-marquee-track { animation: none !important; }
 }
 
 /* ===== 时间轴任务窄条（用户裁决：右侧窄列 + 合规填充） ===== */

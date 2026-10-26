@@ -68,35 +68,75 @@ function ChevronRightIco({ size }: { size: number }) {
   )
 }
 
-/** 标题(滚动=双拷贝跑马灯 prefix 随滚 / 静态=line-clamp 截断) */
+/** 标题(EpochToDo MarqueeTitle 对齐):滚动=传送带——每份拷贝至少占满视口宽、
+ * 无 gap,track 每周期平移实测的一个 cell 宽,时长=cell宽/速度,按各自内容独立;
+ * 静态=line-clamp 截断。辉光挂在标题本身,淡色 prefix 不发光。 */
 function MarqueeTitle({
-  title, prefix, glow, marquee, titleCls,
+  title, prefix, glow, marquee, titleCls, speedPx, fontSize,
 }: {
   title: string
   prefix?: React.ReactNode
   glow: boolean
   marquee: boolean
   titleCls: string
+  speedPx: number
+  fontSize: number
 }) {
-  if (marquee) {
+  const viewportRef = useRef<HTMLSpanElement>(null)
+  const trackRef = useRef<HTMLSpanElement>(null)
+  const [cellWidth, setCellWidth] = useState(0)
+  const [viewportWidth, setViewportWidth] = useState(0)
+
+  useEffect(() => {
+    if (!marquee) return
+    const viewport = viewportRef.current
+    const track = trackRef.current
+    const copy = track?.firstElementChild as HTMLElement | null
+    if (!viewport || !track || !copy) return
+    const check = () => {
+      // 刻意保留小数:offsetWidth 取整会让循环点留一条亚像素缝
+      setCellWidth(copy.getBoundingClientRect().width)
+      setViewportWidth(viewport.clientWidth)
+    }
+    check()
+    const ro = new ResizeObserver(check)
+    // 同时观察 track——拷贝在首次测量后才变宽(prefix 变化/字体替换)时,
+    // 旧 cell 宽会导致每周期可见跳变
+    ro.observe(track)
+    ro.observe(viewport)
+    return () => ro.disconnect()
+  }, [title, marquee, fontSize])
+
+  if (!marquee) {
     return (
-      <span className="ow-marquee">
-        <span className={`ow-marquee-track ${glow ? 'ow-glow' : ''}`}>
-          <span>
-            {prefix}
-            <span className={titleCls}>{title}</span>
-          </span>
-          <span aria-hidden>
-            {prefix}
-            <span className={titleCls}>{title}</span>
-          </span>
-        </span>
+      <span className={`${titleCls} ow-static-title ${glow ? 'ow-glow-title' : ''}`} title={title}>
+        {title}
       </span>
     )
   }
+  const trackStyle = {
+    '--marquee-duration': `${Math.max(0.5, cellWidth / Math.max(1, speedPx)).toFixed(2)}s`,
+    '--marquee-cell': `${cellWidth || 120}px`,
+  } as React.CSSProperties
   return (
-    <span className={`${titleCls} ow-static-title`} title={title}>
-      {title}
+    <span ref={viewportRef} className="ow-marquee">
+      <span ref={trackRef} className="ow-marquee-track" style={trackStyle}>
+        {Array.from({ length: 2 }, (_, i) => (
+          <span
+            key={i}
+            className="ow-marquee-cell"
+            style={{ minWidth: `${viewportWidth || 200}px` }}
+            aria-hidden={i > 0 ? true : undefined}
+          >
+            {prefix}
+            {glow ? (
+              <span className={`${titleCls} ow-glow-title`}>{title}</span>
+            ) : (
+              <span className={titleCls}>{title}</span>
+            )}
+          </span>
+        ))}
+      </span>
     </span>
   )
 }
@@ -180,6 +220,8 @@ function CrumbTitle({ title, ancestors, settings, emBase, titleCls, timerNode, g
         glow={glow}
         marquee={marquee}
         titleCls={titleCls}
+        speedPx={settings?.focusMarqueeSpeed ?? 30}
+        fontSize={emBase}
       />
       <span ref={timerMeasureRef} className="ow-measure" aria-hidden>
         {timerNode}
