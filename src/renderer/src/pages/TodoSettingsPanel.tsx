@@ -190,24 +190,26 @@ export default function TodoSettingsPanel() {
             <div className="settings-row-label">不透明度（%）/ 字号（px）</div>
             <div className="settings-row-help">10–100 / 10–24</div>
           </div>
-          <span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <input
-              type="number"
+              type="range"
               min={10}
               max={100}
-              style={{ width: 60 }}
+              step={5}
+              style={{ width: 120 }}
               value={num(ov.opacity, 80)}
               onChange={(e) => save({ overlay_settings: { ...ov, opacity: Number(e.target.value) } })}
             />
-            {' / '}
+            <span className="settings-row-help">{num(ov.opacity, 80)}%</span>
             <input
-              type="number"
+              type="range"
               min={10}
               max={24}
-              style={{ width: 60 }}
+              style={{ width: 120 }}
               value={num(ov.fontSize, 14)}
               onChange={(e) => save({ overlay_settings: { ...ov, fontSize: Number(e.target.value) } })}
             />
+            <span className="settings-row-help">{num(ov.fontSize, 14)}px</span>
           </span>
         </div>
         <div className="settings-row">
@@ -245,20 +247,19 @@ export default function TodoSettingsPanel() {
             </button>
             {' '}
             <input
-              type="number"
+              type="range"
               min={2}
               max={14}
-              style={{ width: 55 }}
+              style={{ width: 90 }}
               value={num(ov.focusGlowIntensity, 6)}
               onChange={(e) => save({ overlay_settings: { ...ov, focusGlowIntensity: Number(e.target.value) } })}
             />
-            {' / '}
             <input
-              type="number"
+              type="range"
               min={1}
               max={6}
               step={0.5}
-              style={{ width: 55 }}
+              style={{ width: 90 }}
               value={num(ov.focusGlowSpeed, 3)}
               onChange={(e) => save({ overlay_settings: { ...ov, focusGlowSpeed: Number(e.target.value) } })}
             />
@@ -285,10 +286,10 @@ export default function TodoSettingsPanel() {
             </button>
             {' '}
             <input
-              type="number"
+              type="range"
               min={10}
               max={100}
-              style={{ width: 60 }}
+              style={{ width: 120 }}
               value={num(ov.focusMarqueeSpeed, 30)}
               onChange={(e) => save({ overlay_settings: { ...ov, focusMarqueeSpeed: Number(e.target.value) } })}
             />

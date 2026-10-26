@@ -216,7 +216,7 @@ export default function OverlayWindow() {
     : {}
 
   return (
-    <div className="ow-root" style={glowVars}>
+    <div className={settings && !settings.mouseIgnore ? "ow-root interactive" : "ow-root"} style={glowVars}>
       <div className="ow-row ow-focus">
         <span className="ow-icon">🧠</span>
         {focusTask ? (

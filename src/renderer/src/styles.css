@@ -3437,3 +3437,95 @@ input[type='range']::-webkit-slider-thumb:active {
   display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   animation: none !important;
 }
+
+/* ===== Overlay v3：逐类对齐原版 Overlay.tsx 的 Tailwind 样式 ===== */
+/* 根：w-full h-full flex flex-col gap-0.5 p-2 select-none overflow-hidden；穿透时 pointer-events-none，交互时 bg-black/10+白边+圆角+cursor-move */
+.ow-root {
+  gap: 2px;
+  padding: 8px;
+  user-select: none;
+  background: transparent;
+  border: none;
+  pointer-events: none;
+}
+.ow-root.interactive {
+  cursor: move;
+  background: rgba(0, 0, 0, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  pointer-events: auto;
+}
+/* Focus 块：flex items-center gap-2 font-bold bg-black/20 p-2 rounded mb-1 */
+.ow-row.ow-focus {
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 8px;
+  border-radius: 8px;
+  margin-bottom: 4px;
+}
+.ow-focus .ow-icon { font-size: inherit; }
+/* 面包屑：text-[0.7em] opacity-60；计时：font-mono text-[0.8em] opacity-80 */
+.ow-crumb { font-size: 0.7em !important; opacity: 0.6; font-weight: 400; }
+.ow-timer { font-family: ui-monospace, Consolas, monospace; font-size: 0.8em !important; opacity: 0.8; }
+/* 副焦点：font-semibold text-sky-300 bg-sky-500/10 p-1 rounded */
+.ow-row.ow-side {
+  font-weight: 600;
+  color: #7dd3fc;
+  background: rgba(14, 165, 233, 0.1);
+  padding: 4px;
+  border-radius: 8px;
+}
+/* 挂起：bg-black/10 p-1 rounded，行 opacity-80 text-[0.9em] */
+.ow-row.ow-susp {
+  background: rgba(0, 0, 0, 0.1);
+  padding: 4px;
+  border-radius: 8px;
+  opacity: 0.8;
+  font-size: 0.9em;
+}
+/* 队列：opacity-70 text-[0.9em] px-1 my-1（无底色） */
+.ow-row.ow-queued {
+  opacity: 0.7;
+  font-size: 0.9em;
+  padding: 0 4px;
+  margin: 4px 0;
+  background: transparent;
+}
+/* 提醒：text-amber-400 font-bold bg-amber-500/10 p-1 rounded */
+.ow-row.ow-remind {
+  color: #fbbf24;
+  font-weight: 700;
+  background: rgba(245, 158, 11, 0.1);
+  padding: 4px;
+  border-radius: 8px;
+}
+/* AI：text-cyan-300 bg-cyan-500/10 p-1 rounded */
+.ow-row.ow-ai {
+  color: #67e8f9;
+  background: rgba(6, 182, 212, 0.1);
+  padding: 4px;
+  border-radius: 8px;
+}
+/* 训练：text-green-400 bg-green-500/10 p-1 rounded */
+.ow-row.ow-train {
+  color: #4ade80;
+  background: rgba(34, 197, 94, 0.1);
+  padding: 4px;
+  border-radius: 8px;
+}
+/* 过期：overlay-breathe text-rose-300 font-bold bg-rose-500/15 p-1 rounded */
+.ow-row.ow-overdue {
+  color: #fda4af;
+  font-weight: 700;
+  background: rgba(244, 63, 94, 0.15);
+  padding: 4px;
+  border-radius: 8px;
+}
+/* em 层级：标题 1em（root fontSize），面包屑 0.7em，计时 0.8em mono；挂起/队列 0.9em 已按行设 */
+.ow-static { line-clamp: 2; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; white-space: normal; overflow: hidden; }
+.ow-static .ow-marquee-track { animation: none !important; display: block; white-space: normal; }
+.ow-static .ow-marquee-track > span[aria-hidden] { display: none; }
+.ow-static .ow-focus-title { font-size: 1em; }
+.ow-focus-title { font-size: 1em !important; }
