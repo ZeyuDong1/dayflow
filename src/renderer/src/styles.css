@@ -3944,14 +3944,15 @@ html:has(.ow-root), html:has(.sw-root), html:has(.rw-root) {
 /* 独立小窗路由类：渲染前挂上，必中 */
 body.route-floating { background: transparent !important; }
 
-/* 字号层级（用户裁定）：Focus 最大 1.5em，副 Focus 次之 1.2em，其余行更小 */
+/* 字号层级（用户裁定）：Focus 最大 2.2em，副 Focus 次之 1.25em，其余行更小
+   （此块位于文件最末尾、同优先级 !important 后者胜——改 Focus 字号只改这里） */
 .ow-focus-title {
-  font-size: 1.5em !important;
+  font-size: 2.2em !important;
   font-weight: 700;
   line-height: 1.2;
 }
 .ow-side .ow-title {
-  font-size: 1.2em;
+  font-size: 1.25em;
   font-weight: 600;
 }
 .ow-side .ow-timer {
