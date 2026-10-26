@@ -170,12 +170,14 @@ function CrumbTitle({ title, ancestors, settings, emBase, titleCls, timerNode, g
     if (!sub || !titleEl) return
     const compute = () => {
       const s = subRef.current
-      const t = titleMeasureRef.current
-      if (!s || !t) return
+      if (!s) return
       const sepW = Math.ceil(emBase * 0.7) + 4 // ChevronRight + 2×gap
       const timerW = (timerMeasureRef.current?.offsetWidth ?? 0) + 8 // gap
       const levelWs = levelRefs.current.map((el) => el?.offsetWidth ?? Infinity)
-      setVisible(fitBreadcrumbLevels(t.offsetWidth, levelWs, sepW, Math.max(0, s.clientWidth - timerW)))
+      // 内联形态:面包屑优先占位(只显完整层级),标题用剩余空间省略——
+      // 预留至少 60px 给标题,避免长标题把层级挤光
+      const budget = Math.max(0, s.clientWidth - timerW - 60)
+      setVisible(fitBreadcrumbLevels(0, levelWs, sepW, budget))
     }
     compute()
     const ro = new ResizeObserver(compute)
