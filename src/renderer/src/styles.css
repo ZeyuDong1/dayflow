@@ -3786,6 +3786,19 @@ input[type='range']::-webkit-slider-thumb:active {
 @media (prefers-reduced-motion: reduce) {
   .ow-glow, .ow-overdue, .ow-marquee-track { animation: none !important; }
 }
+/* 呼吸独立化:辉光此前被 track 的滚动动画同属性覆盖、又被 static 的 animation:none 连杀——
+   现在滚动与呼吸作为逗号双动画共存;滚动关闭(static)时呼吸照常,层级观感不变 */
+.ow-marquee-track.ow-glow {
+  animation:
+    ow-scroll var(--marquee-duration, 4s) linear infinite,
+    ow-glow var(--focus-glow-speed, 3s) ease-in-out infinite;
+}
+.ow-static .ow-marquee-track.ow-glow {
+  animation: ow-glow var(--focus-glow-speed, 3s) ease-in-out infinite !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ow-marquee-track.ow-glow, .ow-static .ow-marquee-track.ow-glow { animation: none !important; }
+}
 
 /* ===== 时间轴任务窄条（用户裁决：右侧窄列 + 合规填充） ===== */
 .ta-task-strip {
@@ -3918,8 +3931,9 @@ input[type='range']::-webkit-slider-thumb:active {
 .ow-static { line-clamp: 2; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; white-space: normal; overflow: hidden; }
 .ow-static .ow-marquee-track { animation: none !important; display: block; white-space: normal; }
 .ow-static .ow-marquee-track > span[aria-hidden] { display: none; }
-.ow-static .ow-focus-title { font-size: 1em; }
-.ow-focus-title { font-size: 1em !important; }
+.ow-static .ow-focus-title { font-size: 1.6em; }
+.ow-focus-title { font-size: 1.6em !important; }
+.ow-side .ow-title { font-size: 1.25em; }
 
 /* 独立小窗路由：页面底强制透明（:has 与时序无关，必中） */
 body:has(.ow-root), body:has(.sw-root), body:has(.rw-root),
