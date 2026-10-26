@@ -73,6 +73,7 @@ export const defaultSettings: AppSettings = {
     breakMinutes: 10,
     allowBreak: true,
     allowPostpone: true,
+    breakRatioMinutes: 5,
     soundEnabled: true,
     reflectMinutes: 10 // 导师反思轮询间隔（可自定义 1-240 分钟）
   }

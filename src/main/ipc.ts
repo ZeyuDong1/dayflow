@@ -209,6 +209,7 @@ export function registerIpc(win: BrowserWindow): void {
     supervision.takeBreak(minutes)
     return true
   })
+  ipcMain.handle('supervision:earnedBreak', (_e, seconds: number) => supervision.takeEarnedBreak(seconds))
   ipcMain.handle('supervision:stopToday', () => {
     supervision.stopToday()
     return true

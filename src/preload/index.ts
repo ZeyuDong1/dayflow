@@ -234,6 +234,8 @@ const api = {
     ipcRenderer.invoke('supervision:feedback', text),
   supervisionBreak: (minutes?: number): Promise<boolean> =>
     ipcRenderer.invoke('supervision:break', minutes),
+  supervisionEarnedBreak: (seconds: number): Promise<boolean> =>
+    ipcRenderer.invoke('supervision:earnedBreak', seconds),
   supervisionStopToday: (): Promise<boolean> => ipcRenderer.invoke('supervision:stopToday'),
   supervisionPreview: (strict?: boolean): Promise<boolean> =>
     ipcRenderer.invoke('supervision:preview', strict),

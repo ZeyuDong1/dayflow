@@ -114,6 +114,7 @@ export interface TutorConfig {
   breakMinutes: number // 一键休息的默认时长
   allowBreak: boolean // 允许强打断面板"休息一下"暂停遮蔽；关=面板不提供该出口
   allowPostpone: boolean // 允许轻提醒通知"稍后提醒"延迟一次；关=点击不延迟
+  breakRatioMinutes: number // 番茄攒息比例:连续学习 N 分钟攒 1 分钟休息(默认 5 = 学25休5)
   soundEnabled: boolean // 强打断时播放提示音
   reflectMinutes: number // 导师反思轮询间隔（分钟, 1-240, 默认 10）
 }

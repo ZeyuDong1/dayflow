@@ -62,6 +62,10 @@ let lastShowAt = 0 // 上次面板弹出时刻,重弹最小间隔用
 const CALM_LEARN_SEC = 8 // 持续学习这么久才算真回学习
 const CALM_NEUTRAL_SEC = 30 // 持续中立这么久才重置分心状态
 const RESHOW_GAP_MS = 30_000 // 两次弹出的最小间隔(防抖/防闪)
+
+// ---- 番茄攒息(用户定:连续学习按比例攒休息;面板支取;提前回学习回存) ----
+let breakBalanceMs = 0 // 已攒未用的休息余额
+let lastLearnTickAt = 0 // 连续学习的上一个 tick 时刻(中断即清零,体现"连续")
 // 切回"最近弹过面板的违规窗口"的记忆时长:面板因切走自动消失只是给别的
 // 窗口让路,不代表赦免——记忆期内回到同一违规窗口立即重新覆盖,不留逃逸口。
 const RETURN_MEMORY_MS = 10 * 60_000
@@ -392,6 +396,7 @@ async function interruptPayload(ep: Episode): Promise<Record<string, unknown>> {
     devMinutes: Math.round(devMinutes),
     breakMinutes: settings.tutor.breakMinutes,
     allowBreak: settings.tutor.allowBreak,
+    earnedBreakMinutes: Math.floor(breakBalanceMs / 60000),
     soundEnabled: settings.tutor.soundEnabled,
     nudge
   }
@@ -446,6 +451,30 @@ export function takeBreak(minutes?: number): void {
   closeInterrupt()
 }
 
+/** 番茄余额支取:强打断面板上选择休息时长(秒,须 ≤ 余额且 ≥ 1 分钟)。
+ * 休息期内零打扰;提前回学习时没用完的余额由 tick 回存。 */
+export function takeEarnedBreak(seconds: number): boolean {
+  const want = Math.floor(seconds)
+  const maxSec = Math.floor(breakBalanceMs / 1000)
+  if (want < 60 || want > maxSec) {
+    logEvent(
+      'earned-break-denied',
+      episode?.appName ?? null,
+      episode?.title ?? null,
+      `请求 ${want}s / 余额 ${maxSec}s`
+    )
+    return false
+  }
+  breakBalanceMs -= want * 1000
+  breakUntil = Date.now() + want * 1000
+  logEvent('earned-break', episode?.appName ?? null, episode?.title ?? null, `${Math.round(want / 60)} 分钟`)
+  episode = null
+  calmSince = 0
+  lastLearnTickAt = 0
+  closeInterrupt()
+  return true
+}
+
 export function stopToday(): void {
   pausedDayKey = todayKey()
   logEvent('stop-today', episode?.appName ?? null, episode?.title ?? null, null)
@@ -460,6 +489,7 @@ export function supervisionStatus(): {
   breakUntil: number | null
   pausedToday: boolean
   overlayOpen: boolean
+  breakBalanceMinutes: number
 } {
   return {
     active: !!tickTimer,
@@ -467,7 +497,8 @@ export function supervisionStatus(): {
     devMinutes: episode ? (Date.now() - episode.startTs) / 60000 : 0,
     breakUntil: breakUntil > Date.now() ? breakUntil : null,
     pausedToday: pausedDayKey !== null,
-    overlayOpen: !!interruptWin
+    overlayOpen: !!interruptWin,
+    breakBalanceMinutes: Math.floor(breakBalanceMs / 60000)
   }
 }
 
@@ -525,8 +556,31 @@ async function tick(): Promise<void> {
 async function tickInner(): Promise<void> {
   const settings = getSettings()
   if (!settings.tutor.enabled) return
-  if (Date.now() < breakUntil) return
   if (isPaused()) return
+
+  // 番茄休息进行中:零打扰(弱提醒/强遮蔽都不出);持续 8s 回学习则把没用完的余额回存
+  if (Date.now() < breakUntil) {
+    const fgB = getForegroundInfoSync()
+    const idleB = fgB ? powerMonitor.getSystemIdleTime() > settings.capture.idleThresholdSec : true
+    if (fgB && !idleB && !(overlayHwnd && fgB.hwnd === overlayHwnd) && judge(fgB) === 'learning') {
+      if (!calmSince) calmSince = Date.now()
+      if ((Date.now() - calmSince) / 1000 >= CALM_LEARN_SEC) {
+        const remainMs = breakUntil - Date.now()
+        breakUntil = 0
+        calmSince = 0
+        lastLearnTickAt = Date.now() // 无缝接续攒息
+        logEvent(
+          'break-reclaim',
+          fgB.appName,
+          fgB.windowTitle,
+          remainMs > 0 ? `回存 ${Math.round(remainMs / 60000)} 分钟` : '已用完'
+        )
+      }
+    } else {
+      calmSince = 0
+    }
+    return
+  }
 
   const idleSec = powerMonitor.getSystemIdleTime()
   const fg = getForegroundInfoSync()
@@ -537,6 +591,18 @@ async function tickInner(): Promise<void> {
 
   const idle = idleSec > settings.capture.idleThresholdSec
   const verdict: Judge = idle ? 'neutral' : judge(fg)
+
+  // 番茄攒息:连续学习每 N 分钟攒 1 分钟(N=breakRatioMinutes,默认 5 = 学25休5)。
+  // 判定一离开学习即清零连续标记;单 tick 回填上限 10s,防系统休眠恢复后巨涨。
+  if (verdict === 'learning') {
+    if (lastLearnTickAt > 0) {
+      const delta = Math.min(Date.now() - lastLearnTickAt, 10_000)
+      breakBalanceMs += delta / Math.max(1, settings.tutor.breakRatioMinutes)
+    }
+    lastLearnTickAt = Date.now()
+  } else {
+    lastLearnTickAt = 0
+  }
 
   if (verdict !== 'non-learning') {
     // 平静确认:视频/浏览器标题变化会让分类瞬时翻转,抖动不关面板,

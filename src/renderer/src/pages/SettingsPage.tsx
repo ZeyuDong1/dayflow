@@ -721,6 +721,25 @@ export default function SettingsPage({ onSaved }: { onSaved: () => void }): Reac
           </div>
           <div className="settings-row">
             <div>
+              <div className="settings-row-label">番茄休息比例</div>
+              <div className="settings-row-help">
+                连续学习每 N 分钟攒 1 分钟休息（默认 5，即学 25 分钟休 5 分钟）。余额会显示在强打断面板上自由支取；
+                休息期间零打扰，提前回学习时没用完的分钟自动回存。
+              </div>
+            </div>
+            <select
+              value={settings.tutor.breakRatioMinutes}
+              onChange={(e) => patch({ tutor: { breakRatioMinutes: Number(e.target.value) } })}
+            >
+              {[3, 4, 5, 6, 8, 10].map((n) => (
+                <option key={n} value={n}>
+                  {n} : 1
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="settings-row">
+            <div>
               <div className="settings-row-label">允许“休息一下”</div>
               <div className="settings-row-help">
                 关闭后强打断面板不再提供“休息几分钟”按钮，遮蔽只能通过回到学习解除（主进程同步拒绝休息请求）。

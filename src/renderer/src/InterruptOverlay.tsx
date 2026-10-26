@@ -13,6 +13,7 @@ interface InterruptState {
   devMinutes?: number
   breakMinutes?: number
   allowBreak?: boolean
+  earnedBreakMinutes?: number
   soundEnabled?: boolean
   nudge?: string
   done?: boolean
@@ -115,6 +116,32 @@ export default function InterruptOverlay(): React.ReactElement {
                 今天到此为止
               </button>
             </div>
+            {typeof state.earnedBreakMinutes === 'number' && state.earnedBreakMinutes >= 1 && (
+              <div className="itx-approw">
+                <span className="itx-applabel" style={{ marginLeft: 0 }}>
+                  番茄余额 {state.earnedBreakMinutes} 分钟
+                </span>
+                {[5, 10, 15, 20, 30]
+                  .filter((m) => m < state.earnedBreakMinutes!)
+                  .map((m) => (
+                    <button
+                      key={m}
+                      className="btn ghost small"
+                      title={`支取 ${m} 分钟番茄余额,期间零打扰`}
+                      onClick={() => void window.dayflow.supervisionEarnedBreak(m * 60)}
+                    >
+                      休 {m} 分钟
+                    </button>
+                  ))}
+                <button
+                  className="btn small"
+                  title={`支取全部 ${state.earnedBreakMinutes} 分钟番茄余额,期间零打扰`}
+                  onClick={() => void window.dayflow.supervisionEarnedBreak(state.earnedBreakMinutes! * 60)}
+                >
+                  全部休息({state.earnedBreakMinutes} 分钟)
+                </button>
+              </div>
+            )}
             <div className="itx-approw">
               <span className="itx-applabel">{state.appName ? `被拦的应用:${state.appName}` : '被拦的应用'}</span>
               <button
