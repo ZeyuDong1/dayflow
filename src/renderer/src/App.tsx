@@ -109,6 +109,7 @@ function Onboarding({ onDone }: { onDone: () => void }): React.ReactElement {
 
 export default function App(): React.ReactElement {
   const [nav, setNav] = useState<Nav>('activities')
+  const [focusProjectId, setFocusProjectId] = useState<number | null>(null)
   const [day, setDay] = useState('')
   const [today, setToday] = useState('')
   const [projects, setProjects] = useState<Project[]>([])
@@ -315,11 +316,15 @@ export default function App(): React.ReactElement {
             today={today}
             projects={projects}
             onDataChanged={refresh}
+            onOpenProject={(id) => {
+              setFocusProjectId(id)
+              setNav('projects')
+            }}
           />
         )}
         {nav === 'tasks' && <TaskPage />}
         {nav === 'review' && <ReviewPage />}
-        {nav === 'projects' && <ProjectsPage onDataChanged={refresh} />}
+        {nav === 'projects' && <ProjectsPage onDataChanged={refresh} focusProjectId={focusProjectId} />}
         {nav === 'daily' && <DailyPage />}
         {nav === 'weekly' && <WeeklyPage />}
         {nav === 'chat' && <ChatPage />}

@@ -16,6 +16,7 @@ function ProjectTree({
   onCreate,
   onDelete,
   onColor,
+  onOpen,
   expanded,
   toggleExpand
 }: {
@@ -25,6 +26,7 @@ function ProjectTree({
   onCreate: (title: string, parentId: number | null) => void
   onDelete: (id: number) => void
   onColor: (id: number, color: string) => void
+  onOpen: (id: number) => void
   expanded: Set<number>
   toggleExpand: (id: number) => void
 }): React.ReactElement {
@@ -67,7 +69,15 @@ function ProjectTree({
             onChange={(e) => onColor(p.id, e.target.value)}
             title="项目颜色"
           />
-          <span className="project-title" title={p.title}>
+          <span
+            className="project-title"
+            title={`${p.title} · 点击查看类型详情`}
+            style={{ cursor: 'pointer' }}
+            onClick={(e) => {
+              e.stopPropagation()
+              onOpen(p.id)
+            }}
+          >
             {p.title}
           </span>
           {min >= 1 && <span className="project-min">{formatDuration(min)}</span>}
@@ -847,13 +857,15 @@ export default function ActivitiesView({
   setDay,
   today,
   projects,
-  onDataChanged
+  onDataChanged,
+  onOpenProject
 }: {
   day: string
   setDay: (d: string) => void
   today: string
   projects: Project[]
   onDataChanged: () => void
+  onOpenProject: (id: number) => void
 }): React.ReactElement {
   const [view, setView] = useState<'unified' | 'category' | 'chrono' | 'cards'>('category')
   const [query, setQuery] = useState('')
@@ -1307,6 +1319,7 @@ export default function ActivitiesView({
             onColor={(id, color) => {
               void window.dayflow.updateProject(id, { color }).then(() => onDataChanged())
             }}
+            onOpen={(id) => onOpenProject(id)}
             expanded={treeExpanded}
             toggleExpand={toggleTreeExpand}
           />
