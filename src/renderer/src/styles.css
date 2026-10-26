@@ -3428,6 +3428,7 @@ input[type='range']::-webkit-slider-thumb:active {
 .sw-input::placeholder { color: rgba(138, 126, 108, 0.5); }
 .sw-typepill {
   position: absolute; right: 16px; top: 50%; transform: translateY(-50%);
+  width: auto; /* .sw-inputbar > div 的 width:100% 会让绝对定位盒子左铺满,内容顶到左缘 */
   display: flex; align-items: center; gap: 8px;
 }
 .sw-typepill .type {
