@@ -3931,9 +3931,8 @@ input[type='range']::-webkit-slider-thumb:active {
 .ow-static { line-clamp: 2; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; white-space: normal; overflow: hidden; }
 .ow-static .ow-marquee-track { animation: none !important; display: block; white-space: normal; }
 .ow-static .ow-marquee-track > span[aria-hidden] { display: none; }
-.ow-static .ow-focus-title { font-size: 2.2em; }
-.ow-focus-title { font-size: 2.2em !important; }
 .ow-side .ow-title { font-size: 1.25em; }
+.ow-side .ow-marquee-track { font-size: 1.25em; font-weight: 600; }
 
 /* 独立小窗路由：页面底强制透明（:has 与时序无关，必中） */
 body:has(.ow-root), body:has(.sw-root), body:has(.rw-root),
@@ -3947,7 +3946,7 @@ body.route-floating { background: transparent !important; }
 /* 字号层级（用户裁定）：Focus 最大 2.2em，副 Focus 次之 1.25em，其余行更小
    （此块位于文件最末尾、同优先级 !important 后者胜——改 Focus 字号只改这里） */
 .ow-focus-title {
-  font-size: 2.2em !important;
+  font-size: 1.8em !important;
   font-weight: 700;
   line-height: 1.2;
 }

@@ -196,12 +196,41 @@ export default function OverlayWindow() {
     [tasks, tsMap],
   )
 
-  const ancestors = focusTask ? getAncestorChain(tasks, focusTask.id) : []
+  const bodyRef = useRef<HTMLSpanElement | null>(null)
+  const [focusBoxW, setFocusBoxW] = useState(0)
   const fontSize = settings?.fontSize ?? 14
-  const est = (s: string) => s.length * fontSize * 0.9
-  const fitCount = focusTask
-    ? fitBreadcrumbLevels(est(focusTask.title), ancestors.map((a) => est(a.title)), fontSize, 260)
-    : 0
+  useEffect(() => {
+    const el = bodyRef.current
+    if (!el) return
+    const ro = new ResizeObserver(() => setFocusBoxW(el.clientWidth))
+    ro.observe(el)
+    setFocusBoxW(el.clientWidth)
+    return () => ro.disconnect()
+  }, [focusTask?.id])
+
+  const measureCtx = useMemo(() => document.createElement('canvas').getContext('2d'), [])
+  const measure = useCallback(
+    (text: string, px: number, weight = 400): number => {
+      if (!measureCtx) return text.length * px * 0.9
+      measureCtx.font = `${weight} ${px}px 'LXGW WenKai', sans-serif`
+      return measureCtx.measureText(text).width
+    },
+    [measureCtx],
+  )
+
+  const ancestors = focusTask ? getAncestorChain(tasks, focusTask.id) : []
+  // 面包屑宽度自适应(原版语义):按真实渲染宽度判断还能显示几级父任务,
+  // 不再用车估常数——Focus 标题 1.8em/700,面包屑 0.7em/400,余量 12px
+  const FOCUS_EM = 1.8
+  const CRUMB_EM = 0.7
+  const fitCount = useMemo(() => {
+    if (!focusTask) return 0
+    const titleW = measure(focusTask.title, fontSize * FOCUS_EM, Math.max(700, settings?.fontWeight ?? 400))
+    const sepW = measure(' / ', fontSize * CRUMB_EM)
+    const levelWs = ancestors.map((a) => measure(a.title, fontSize * CRUMB_EM))
+    const budget = Math.max(0, focusBoxW - 12)
+    return fitBreadcrumbLevels(titleW, levelWs, sepW, budget)
+  }, [focusTask, ancestors, fontSize, focusBoxW, measure, settings?.fontWeight])
   const crumb = ancestors.slice(ancestors.length - fitCount).map((a) => a.title).join(' / ')
 
   const glowVars = settings
@@ -226,6 +255,7 @@ export default function OverlayWindow() {
         {focusTask ? (
           <span className="ow-focus-body">
             <span
+              ref={bodyRef}
               className={settings?.focusMarqueeEnabled ? 'ow-marquee' : 'ow-static'}
               title={settings?.focusMarqueeEnabled ? undefined : focusTask.title}
             >
@@ -252,7 +282,16 @@ export default function OverlayWindow() {
       {sideTasks.map((t) => (
         <div key={t.id} className="ow-row ow-side">
           <span className="ow-icon">◎</span>
-          <span className={settings?.sideGlowEnabled ? 'ow-glow ow-title' : 'ow-title'}>{t.title}</span>
+          {settings?.sideMarqueeEnabled ? (
+            <span className="ow-marquee">
+              <span className={`ow-marquee-track ${settings?.sideGlowEnabled ? 'ow-glow' : ''}`}>
+                <span>{t.title}</span>
+                <span aria-hidden>{t.title}</span>
+              </span>
+            </span>
+          ) : (
+            <span className={settings?.sideGlowEnabled ? 'ow-glow ow-title' : 'ow-title'}>{t.title}</span>
+          )}
           <span className="ow-timer">{getTimerDisplay(t, now)}</span>
         </div>
       ))}
