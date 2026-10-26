@@ -58,7 +58,7 @@ export function showOverlayWindow(settings: TodoSettings): void {
     show: false,
     backgroundColor: '#00000000',
     webPreferences: {
-      preload: path.join(__dirname, '../../preload/index.js'),
+      preload: path.join(__dirname, '../preload/index.js'),
       sandbox: false,
       contextIsolation: true,
     },
@@ -90,7 +90,7 @@ export function showOverlayWindow(settings: TodoSettings): void {
   if (devUrl) {
     void win.loadURL(`${devUrl}#/overlay`)
   } else {
-    void win.loadFile(path.join(__dirname, '../../renderer/index.html'), { hash: '/overlay' })
+    void win.loadFile(path.join(__dirname, '../renderer/index.html'), { hash: '/overlay' })
   }
   win.once('ready-to-show', () => {
     if (win && !win.isDestroyed()) win.show()

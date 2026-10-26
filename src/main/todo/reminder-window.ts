@@ -57,7 +57,7 @@ export function showReminderWindow(): void {
     show: false,
     backgroundColor: '#00000000',
     webPreferences: {
-      preload: path.join(__dirname, '../../preload/index.js'),
+      preload: path.join(__dirname, '../preload/index.js'),
       sandbox: false,
       contextIsolation: true,
     },
@@ -90,7 +90,7 @@ export function showReminderWindow(): void {
   if (devUrl) {
     void win.loadURL(`${devUrl}#/reminder`)
   } else {
-    void win.loadFile(path.join(__dirname, '../../renderer/index.html'), { hash: '/reminder' })
+    void win.loadFile(path.join(__dirname, '../renderer/index.html'), { hash: '/reminder' })
   }
 }
 
