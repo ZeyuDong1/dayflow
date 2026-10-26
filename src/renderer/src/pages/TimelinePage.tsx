@@ -730,6 +730,7 @@ function TimingAxis({
                 draggable={!b.isTask}
                 onDragStart={(e) => {
                   dragState.current = {
+                    kind: 'band',
                     ids: b.ids,
                     appName: b.dominantApp,
                     title: b.dominantTitle
@@ -870,6 +871,14 @@ export default function ActivitiesView({
   const [appIcons, setAppIcons] = useState<Record<string, string>>({})
   const [focusSessions, setFocusSessions] = useState<{ id: number; taskId: number | null; title: string; startTs: number; endTs: number; color: string }[]>([])
   const [sessionRatios, setSessionRatios] = useState<Record<number, number | null>>({})
+  const [treeExpanded, setTreeExpanded] = useState<Set<number>>(new Set())
+  const [ruleDraft, setRuleDraft] = useState<{
+    projectId: number
+    projectName: string
+    field: 'app' | 'title'
+    value: string
+    ids: number[]
+  } | null>(null)
 
   const projectColor = (id: number | null): string =>
     projects.find((p) => p.id === id)?.color ?? '#b0a794'
@@ -936,6 +945,54 @@ export default function ActivitiesView({
     })
   }
 
+  const toggleTreeExpand = (id: number): void =>
+    setTreeExpanded((prev) => {
+      const n = new Set(prev)
+      if (n.has(id)) n.delete(id)
+      else n.add(id)
+      return n
+    })
+
+  const assignIds = (ids: number[], projectId: number): void => {
+    void Promise.all(ids.map((id) => window.dayflow.assignActivity(id, projectId))).then(() => {
+      load()
+      onDataChanged()
+    })
+  }
+
+  // 类型树投放:列表行(title 拖动)= 弹窗建规则;时间轴块 = 直接归类,Alt = 建规则
+  const onTreeAssign = (projectId: number, alt: boolean): void => {
+    const d = dragState.current
+    if (!d) return
+    if (alt || d.kind === 'row') {
+      setRuleDraft({
+        projectId,
+        projectName: projects.find((p) => p.id === projectId)?.title ?? '',
+        field: d.kind === 'row' ? 'title' : 'app',
+        value: d.kind === 'row' ? d.title : d.appName,
+        ids: d.ids,
+      })
+      dragState.current = null
+      return
+    }
+    assignIds(d.ids, projectId)
+    dragState.current = null
+  }
+
+  const createRuleNow = (): void => {
+    if (!ruleDraft) return
+    const value = ruleDraft.value.trim()
+    if (!value) return
+    void window.dayflow
+      .createRule(ruleDraft.projectId, [{ field: ruleDraft.field, op: 'contains', value }])
+      .then(() => {
+        if (ruleDraft.ids.length > 0) assignIds(ruleDraft.ids, ruleDraft.projectId)
+        setRuleDraft(null)
+        load()
+        onDataChanged()
+      })
+  }
+
   const matchQuery = (app: string, title: string): boolean => {
     if (!query.trim()) return true
     const q = query.toLowerCase()
@@ -955,20 +1012,22 @@ export default function ActivitiesView({
   // ---- 统一视图：时间相近的段融合成会话行 ----
   const sessions = (() => {
     const sorted = [...filteredActivities].sort((a, b) => a.startTs - b.startTs)
-    const out: { startTs: number; endTs: number; apps: string[]; title: string; minutes: number }[] = []
+    const out: { startTs: number; endTs: number; apps: string[]; title: string; minutes: number; ids: number[] }[] = []
     for (const a of sorted) {
       const last = out[out.length - 1]
       if (last && a.startTs - last.endTs < 5 * 60_000) {
         last.endTs = Math.max(last.endTs, a.endTs)
         if (!last.apps.includes(a.appName)) last.apps.push(a.appName)
         if ((a.title ?? '').length > (last.title ?? '').length) last.title = a.title
+        last.ids.push(a.id)
       } else {
         out.push({
           startTs: a.startTs,
           endTs: a.endTs,
           apps: [a.appName],
           title: a.title,
-          minutes: 0
+          minutes: 0,
+          ids: [a.id]
         })
       }
     }
@@ -1094,6 +1153,7 @@ export default function ActivitiesView({
           </div>
         )}
 
+        <div className="act-body">
         <div className="act-content">
           {view === 'category' && (
             <ActivityTree activities={filteredActivities} tasks={dayTasks} projects={projects} colorOf={projectColor} icons={appIcons} />
@@ -1102,7 +1162,16 @@ export default function ActivitiesView({
           {view === 'unified' && (
             <div className="atr-wrap">
               {sessions.map((sn) => (
-                <div className="atr-row" key={sn.startTs} style={{ paddingLeft: 12 }}>
+                <div
+                  className="atr-row"
+                  key={sn.startTs}
+                  style={{ paddingLeft: 12 }}
+                  draggable
+                  onDragStart={(e) => {
+                    dragState.current = { kind: 'row', ids: sn.ids, appName: sn.apps[0], title: sn.title }
+                    e.dataTransfer?.setData('text/plain', sn.ids.join(','))
+                  }}
+                >
                   <span className="atr-dur">{formatDuration(sn.minutes)}</span>
                   <span className="atr-chev" />
                   <span className="atr-icon">
@@ -1133,6 +1202,11 @@ export default function ActivitiesView({
                   className="atr-row"
                   key={a.id}
                   style={{ paddingLeft: 12 }}
+                  draggable
+                  onDragStart={(e) => {
+                    dragState.current = { kind: 'row', ids: [a.id], appName: a.appName, title: a.title }
+                    e.dataTransfer?.setData('text/plain', String(a.id))
+                  }}
                   onClick={() => setSelectedActivity(a)}
                 >
                   <span className="atr-dur">{formatDuration((a.endTs - a.startTs) / 60000)}</span>
@@ -1210,7 +1284,84 @@ export default function ActivitiesView({
             </div>
           )}
         </div>
+        <div className="act-tree-side">
+          <div className="act-tree-title">类型 · 拖入归类</div>
+          <ProjectTree
+            projects={projects}
+            activities={filteredActivities}
+            onAssign={onTreeAssign}
+            onCreate={(title, parentId) => {
+              void window.dayflow
+                .createProject({ title, parentId, productivityScore: 4 })
+                .then(() => {
+                  load()
+                  onDataChanged()
+                })
+            }}
+            onDelete={(id) => {
+              void window.dayflow.deleteProject(id).then(() => {
+                load()
+                onDataChanged()
+              })
+            }}
+            onColor={(id, color) => {
+              void window.dayflow.updateProject(id, { color }).then(() => onDataChanged())
+            }}
+            expanded={treeExpanded}
+            toggleExpand={toggleTreeExpand}
+          />
+        </div>
+        </div>
       </div>
+
+      {ruleDraft && (
+        <div className="modal-backdrop" onClick={() => setRuleDraft(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h2>创建归类规则</h2>
+            <p className="modal-sub">
+              把「{ruleDraft.field === 'app' ? ruleDraft.value : ruleDraft.value.slice(0, 40)}」归到类别「
+              {ruleDraft.projectName}」——之后匹配的活动自动归类
+            </p>
+            <div className="settings-row">
+              <div className="settings-row-label">匹配字段</div>
+              <select
+                value={ruleDraft.field}
+                onChange={(e) => setRuleDraft({ ...ruleDraft, field: e.target.value as 'app' | 'title' })}
+              >
+                <option value="app">应用名包含</option>
+                <option value="title">窗口标题包含</option>
+              </select>
+            </div>
+            <div className="settings-row">
+              <div className="settings-row-label">关键词</div>
+              <input
+                style={{ flex: 1, marginLeft: 12, padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border-strong)' }}
+                value={ruleDraft.value}
+                onChange={(e) => setRuleDraft({ ...ruleDraft, value: e.target.value })}
+              />
+            </div>
+            <div className="modal-actions">
+              <button className="btn primary" onClick={() => void createRuleNow()}>
+                创建规则并回溯应用
+              </button>
+              {ruleDraft.ids.length > 0 && (
+                <button
+                  className="btn"
+                  onClick={() => {
+                    assignIds(ruleDraft.ids, ruleDraft.projectId)
+                    setRuleDraft(null)
+                  }}
+                >
+                  仅归类选中活动
+                </button>
+              )}
+              <button className="btn ghost" onClick={() => setRuleDraft(null)}>
+                取消
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ================= 右栏：全局时间轴（LOD） ================= */}
       <div className="act-gantt">

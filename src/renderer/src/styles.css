@@ -2832,6 +2832,29 @@ label.field {
   padding: 10px 14px 26px;
 }
 
+/* 类型树侧栏:全部视图可见,拖入归类 */
+.act-body {
+  display: flex;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+}
+.act-tree-side {
+  flex: 0 0 300px;
+  overflow-y: auto;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+}
+.act-tree-title {
+  font-family: var(--serif);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 10px;
+}
+
 .act-gantt {
   width: 500px;
   flex-shrink: 0;
