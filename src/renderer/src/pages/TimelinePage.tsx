@@ -387,6 +387,14 @@ function ActivityTree({
  */
 
 /** 混白 72% 的不透明粉彩——密集区堆叠时保持干净的马赛克。 */
+/** hex → rgba(带透明度);非 hex 原样返回。 */
+function withAlpha(color: string, alpha: number): string {
+  const m = /^#([0-9a-fA-F]{6})$/.exec(color)
+  if (!m) return color
+  const n = parseInt(m[1], 16)
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${Math.max(0, Math.min(1, alpha)).toFixed(2)})`
+}
+
 function pastel(hex: string): string {
   try {
     const h = hex.replace('#', '')
@@ -560,7 +568,8 @@ function TimingAxis({
   onAddManual,
   icons,
   sessions,
-  ratios
+  ratios,
+  segments
 }: {
   activities: AppActivity[]
   tasks: TaskActivity[]
@@ -569,6 +578,7 @@ function TimingAxis({
   projects: Project[]
   colorOf: (id: number | null) => string
   onSelect: (a: AppActivity | null) => void
+  segments: Record<number, { segStart: number; segEnd: number; score: number }[]>
   selected: AppActivity | null
   onAddManual: (minute: number) => void
   icons?: Record<string, string>
@@ -676,21 +686,33 @@ function TimingAxis({
               const top = yOf(sess.startTs)
               const hh = Math.max(((sess.endTs - sess.startTs) / 60000) * ppm - 3, 2)
               const ratio = ratios[sess.id]
-              return (
+              const segs = segments[sess.id]
+              const block = (t: number, h: number, bg: string, key: React.Key, segScore?: number) => (
                 <div
-                  key={sess.id}
+                  key={key}
                   className="ta-task-block"
-                  style={{ top, height: hh, background: sess.color }}
+                  style={{ top: t, height: h, background: bg }}
+                  title={segScore != null ? `专注度 ${segScore}% · 点击看详情` : '点击看会话详情'}
                   onClick={(e) => {
                     e.stopPropagation()
                     setSessionTip({ s: sess, x: e.clientX, y: e.clientY })
                   }}
                 >
-                  {ratio != null && ratio > 0 && (
+                  {segScore == null && ratio != null && ratio > 0 && (
                     <div className="ta-task-fill" style={{ height: Math.round(ratio * 100) + '%' }} />
                   )}
                 </div>
               )
+              // 分段专注度:AI 按截图时段给出的百分制评分 → 颜色深浅
+              if (segs && segs.length > 0) {
+                return segs.map((sg, i) => {
+                  const segTop = yOf(Math.max(sg.segStart, sess.startTs))
+                  const segEnd = Math.min(sg.segEnd, sess.endTs)
+                  const segH = Math.max(((segEnd - Math.max(sg.segStart, sess.startTs)) / 60000) * ppm - 2, 2)
+                  return block(segTop, segH, withAlpha(sess.color, 0.18 + 0.82 * (sg.score / 100)), `${sess.id}-${i}`, sg.score)
+                })
+              }
+              return block(top, hh, sess.color, sess.id)
             })}
           </div>
           {sessionTip && (
@@ -883,6 +905,7 @@ export default function ActivitiesView({
   const [appIcons, setAppIcons] = useState<Record<string, string>>({})
   const [focusSessions, setFocusSessions] = useState<{ id: number; taskId: number | null; title: string; startTs: number; endTs: number; color: string }[]>([])
   const [sessionRatios, setSessionRatios] = useState<Record<number, number | null>>({})
+  const [segByHistory, setSegByHistory] = useState<Record<number, { segStart: number; segEnd: number; score: number }[]>>({})
   const [treeExpanded, setTreeExpanded] = useState<Set<number>>(new Set())
   const [ruleDraft, setRuleDraft] = useState<{
     projectId: number
@@ -917,6 +940,13 @@ export default function ActivitiesView({
         for (const r of rows as { historyId: number; ratio: number | null }[]) map[r.historyId] = r.ratio
         setSessionRatios(map)
       })
+    void window.dayflow.todo.sessionSegments(day).then((rows) => {
+      const map: Record<number, { segStart: number; segEnd: number; score: number }[]> = {}
+      for (const r of rows as unknown as { historyId: number; segStart: number; segEnd: number; score: number }[]) {
+        ;(map[r.historyId] ??= []).push({ segStart: r.segStart, segEnd: r.segEnd, score: r.score })
+      }
+      setSegByHistory(map)
+    })
   }, [day])
 
   useEffect(() => {
@@ -1391,6 +1421,7 @@ export default function ActivitiesView({
           onAddManual={(minute) => setManualDraft({ minute, title: '', dur: 30 })}
           sessions={focusSessions}
           ratios={sessionRatios}
+          segments={segByHistory}
         />
         {selectedActivity && (
           <div className="panel ta-detail">

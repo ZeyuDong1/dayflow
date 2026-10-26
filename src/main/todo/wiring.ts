@@ -33,6 +33,7 @@ import {
   COMPLIANCE_SCHEMA_SQL,
   analyzeSession,
   listAnalyses,
+  listSegments,
   getAnalysis,
   type SessionSample,
 } from './compliance'
@@ -214,6 +215,7 @@ export function createTodoRuntime(opts: { port?: number } = {}): TodoRuntime {
     resetOverlayPosition: () => resetOverlayPosition(),
     focusSessions,
     sessionAnalyses,
+    sessionSegments,
     analyzeDay,
     mdSync,
     data: {
@@ -271,6 +273,7 @@ export function createTodoRuntime(opts: { port?: number } = {}): TodoRuntime {
       }))
   }
   function sessionAnalyses(day: string) { return listAnalyses(db, day) }
+  function sessionSegments(day: string) { return listSegments(db, day) }
   async function analyzeDay(day: string): Promise<number> {
     let n = 0
     for (const s of focusSessions(day)) {

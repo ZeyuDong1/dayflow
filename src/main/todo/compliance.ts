@@ -21,6 +21,15 @@ export const COMPLIANCE_SCHEMA_SQL = `
   );
 
   CREATE INDEX IF NOT EXISTS idx_task_session_analysis_history ON task_session_analysis(history_id);
+
+  CREATE TABLE IF NOT EXISTS task_focus_segment (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      history_id INTEGER NOT NULL,
+      seg_start INTEGER NOT NULL,
+      seg_end INTEGER NOT NULL,
+      score INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_task_focus_segment_history ON task_focus_segment(history_id);
 `
 
 /** 截图样本（对应 screenshots 表一行的 captured_at/file_path）。 */
@@ -38,7 +47,11 @@ export interface SessionJudgeInput {
 
 export interface SessionJudgeOutput {
   onTaskCount: number
+  /** 在做任务的样本编号数组(1 基)——供未给分样本回填 0/100。 */
+  onTaskIdx?: number[]
   detail?: string
+  /** 逐样本专注度(百分制):index 为样本编号(1 基),score 0–100。可选;缺省由 onTask 推 0/100。 */
+  scores?: { index: number; score: number }[]
 }
 
 /** LLM 判定注入点：给定会话与样本，返回"在做该任务"的样本数与可选证据摘要。 */
@@ -133,7 +146,48 @@ export async function analyzeSession(deps: AnalyzeSessionDeps, input: AnalyzeSes
      VALUES (?, ?, ?, ?, ?, ?)`,
     [input.historyId, deps.now(), sampleCount, onTaskCount, ratio, judged.detail ?? null],
   )
+
+  // 逐样本专注度(百分制) → 按截图时刻切段存储(时间轴窄条按段着色)。
+  // judge 未给分的样本由 onTask 布尔推 100/0;段边界=相邻样本时刻,首尾接会话起止。
+  const onTaskSet = new Set(
+    (Array.isArray(judged.onTaskIdx) ? judged.onTaskIdx : []).map((n) => Math.round(n)),
+  )
+  const scoreAt = new Array<number>(sampleCount)
+  for (let i = 0; i < sampleCount; i++) {
+    const given = (judged.scores ?? []).find((s) => s.index === i + 1)
+    scoreAt[i] = given ? Math.min(100, Math.max(0, Math.round(given.score))) : onTaskSet.has(i + 1) ? 100 : 0
+  }
+  deps.db.run('DELETE FROM task_focus_segment WHERE history_id = ?', [input.historyId])
+  for (let i = 0; i < sampleCount; i++) {
+    const segStart = i === 0 ? input.startTs : picked[i].capturedAt
+    const segEnd = i + 1 < sampleCount ? picked[i + 1].capturedAt : input.endTs
+    if (segEnd <= segStart) continue
+    deps.db.run(
+      'INSERT INTO task_focus_segment (history_id, seg_start, seg_end, score) VALUES (?, ?, ?, ?)',
+      [input.historyId, segStart, segEnd, scoreAt[i]],
+    )
+  }
   return { ratio, sampleCount, onTaskCount }
+}
+
+/** 会话分段专注度行。 */
+export interface FocusSegment {
+  historyId: number
+  segStart: number
+  segEnd: number
+  score: number
+}
+
+/** 当日全部分段(按 history.start_time 日前缀过滤),按时间升序。 */
+export function listSegments(db: TodoDB, day: string): FocusSegment[] {
+  return db.all<FocusSegment>(
+    `SELECT s.history_id AS historyId, s.seg_start AS segStart, s.seg_end AS segEnd, s.score AS score
+     FROM task_focus_segment s
+     JOIN history h ON h.id = s.history_id
+     WHERE h.start_time LIKE ?
+     ORDER BY s.seg_start ASC, s.id ASC`,
+    [`${day}%`],
+  )
 }
 
 /** 读缓存（未分析过返回 undefined）。 */

@@ -35,6 +35,7 @@ export interface TodoIpcDeps {
   resetOverlayPosition?: () => void
   focusSessions?: (day: string) => { id: number; taskId: number | null; title: string; startTs: number; endTs: number }[]
   sessionAnalyses?: (day: string) => unknown[]
+  sessionSegments?: (day: string) => unknown[]
   analyzeDay?: (day: string) => Promise<number>
   wandbUpdate?: () => void
   wandbTest?: (entity: string, apiKey: string) => Promise<{ valid: boolean; projectCount: number; hostname: string; error?: string }>
@@ -232,6 +233,7 @@ export function registerTodoIpc(reg: IpcRegistry, deps: TodoIpcDeps): void {
   // 时间轴窄条：专注会话 + 合规分析
   reg.handle('todo:focus-sessions', ((_e: never, day: string) => deps.focusSessions?.(day) ?? []) as never)
   reg.handle('todo:session-analyses', ((_e: never, day: string) => deps.sessionAnalyses?.(day) ?? []) as never)
+  reg.handle('todo:session-segments', ((_e: never, day: string) => deps.sessionSegments?.(day) ?? []) as never)
   reg.handle('todo:analyze-day', ((_e: never, day: string) => deps.analyzeDay?.(day) ?? Promise.resolve(0)) as never)
 
   // wandb 域

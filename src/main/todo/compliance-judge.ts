@@ -23,14 +23,26 @@ export function createLlmJudge(): SessionJudge {
     const prompt = [
       `用户在时间段 ${new Date(input.startTs).toISOString()} ~ ${new Date(input.endTs).toISOString()} 计划执行任务：「${input.taskTitle}」。`,
       `下面是该时段的屏幕截图样本（依次标注：${refs.join('、')}）。`,
-      '请逐张判断用户当时是否正在执行该任务（同一工作流就算在做；明显转去娱乐/无关事务算没在做）。',
-      '只输出 JSON：{"onTask":[在做任务的样本编号数组，如[1,3]], "note":"一句话依据"}',
+      '请逐张判断用户当时是否正在执行该任务（同一工作流就算在做；明显转去娱乐/无关事务算没在做），',
+      '并给每张一个 0–100 的「专注度」评分（100=完全在执行该任务，0=完全无关；中间按投入程度打分）。',
+      '只输出 JSON：{"scores":[{"sample":1,"score":88},{"sample":2,"score":40}], "onTask":[得分≥50 的样本编号数组], "note":"一句话依据"}',
     ].join('\n')
     const raw = await visionComplete(prompt, images, 'timeline')
-    const obj = extractJsonObject<{ onTask?: unknown[]; note?: string }>(raw)
+    const obj = extractJsonObject<{
+      onTask?: unknown[]
+      scores?: { sample?: unknown; score?: unknown }[]
+      note?: string
+    }>(raw)
     const onTask = Array.isArray(obj.onTask) ? obj.onTask.filter((x) => Number.isInteger(x)).map(Number) : []
+    const scores = Array.isArray(obj.scores)
+      ? obj.scores
+          .map((s) => ({ index: Number(s.sample), score: Math.round(Number(s.score)) }))
+          .filter((s) => Number.isInteger(s.index) && Number.isFinite(s.score))
+      : []
     return {
       onTaskCount: new Set(onTask.filter((n) => n >= 1 && n <= images.length)).size,
+      onTaskIdx: onTask,
+      scores,
       detail: typeof obj.note === 'string' ? obj.note : undefined,
     }
   }

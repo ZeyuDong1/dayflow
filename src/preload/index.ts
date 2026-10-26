@@ -333,6 +333,7 @@ const api = {
     ): Promise<{ id: number; taskId: number | null; title: string; startTs: number; endTs: number }[]> =>
       ipcRenderer.invoke('todo:focus-sessions', day),
     sessionAnalyses: (day: string): Promise<unknown[]> => ipcRenderer.invoke('todo:session-analyses', day),
+    sessionSegments: (day: string): Promise<unknown[]> => ipcRenderer.invoke('todo:session-segments', day),
     analyzeDay: (day: string): Promise<number> => ipcRenderer.invoke('todo:analyze-day', day),
     wandbUpdate: (): void => {
       ipcRenderer.send('wandb:update')
