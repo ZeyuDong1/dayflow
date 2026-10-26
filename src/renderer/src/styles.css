@@ -3217,106 +3217,162 @@ input[type='range']::-webkit-slider-thumb:active {
   }
 }
 
-/* ===== Reminder 硬提醒窗（#/reminder） ===== */
+/* ===== Reminder 硬提醒窗（#/reminder）——布局对齐 EpochToDo 原版，色系统一 Dayflow 令牌 ===== */
 .rw-root {
-  width: 100vw;
-  height: 100vh;
-  box-sizing: border-box;
-  padding: 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  background: var(--card);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-pop);
-  font-family: var(--sans);
-  color: var(--text);
-  overflow: hidden;
-}
-.rw-empty {
-  margin: auto;
-  color: var(--text-dim);
+  width: 100vw; height: 100vh; box-sizing: border-box; padding: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--sans); user-select: none;
 }
 .rw-card {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 14px;
-  background: var(--card-soft);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  width: 100%; height: 100%; box-sizing: border-box;
+  background: var(--card); border: 1px solid var(--border-strong); border-radius: 12px;
+  box-shadow: var(--shadow-pop);
+  display: flex; flex-direction: column; overflow: hidden;
+  animation: rw-in 0.3s var(--ease-out);
 }
-.rw-card-training { border-left: 4px solid var(--green); }
-.rw-card-gpu-idle { border-left: 4px solid var(--red); }
-.rw-card-notification { border-left: 4px solid var(--sky); }
-.rw-card-standard { border-left: 4px solid var(--accent); }
-.rw-type { font-size: 12px; color: var(--text-dim); letter-spacing: 0.08em; }
-.rw-title { font-size: 18px; font-weight: 600; line-height: 1.35; word-break: break-word; }
-.rw-memo { font-size: 12px; color: var(--text-dim); white-space: pre-wrap; max-height: 72px; overflow: auto; }
-.rw-timer { font-variant-numeric: tabular-nums; color: var(--text-faint); font-size: 13px; }
-.rw-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
-.rw-btn {
-  border: 1px solid var(--border-strong);
-  background: var(--cream-deep);
-  color: var(--text);
-  border-radius: 8px;
-  padding: 8px 14px;
-  font-family: var(--sans);
-  cursor: pointer;
-  transition: transform var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out);
+@keyframes rw-in {
+  from { opacity: 0; transform: scale(0.95); }
 }
-.rw-btn:hover { transform: translateY(-1px); }
-.rw-btn:active { transform: scale(0.97); }
-.rw-btn-primary { background: var(--accent); border-color: var(--accent-deep); color: #fff; }
-.rw-btn-ghost { background: transparent; }
-.rw-pending { overflow: auto; display: flex; flex-direction: column; gap: 6px; }
-.rw-pending-title { font-size: 12px; color: var(--text-dim); }
-.rw-pending-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  border: 1px solid var(--border);
-  background: var(--inset);
-  border-radius: 8px;
-  padding: 7px 10px;
-  font-family: var(--sans);
-  cursor: pointer;
-  text-align: left;
+
+/* 当前提醒（顶部大卡） */
+.rw-current {
+  flex-shrink: 0; padding: 24px; text-align: center;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(to bottom, var(--card-soft), transparent);
+  position: relative; overflow: hidden;
 }
-.rw-pending-row:hover { transform: translateX(2px); }
-.rw-pending-timer { color: var(--text-faint); font-variant-numeric: tabular-nums; }
-.rw-select { display: flex; flex-direction: column; gap: 10px; overflow: auto; }
-.rw-select-title { font-size: 14px; color: var(--text-dim); }
-.rw-select-list { display: flex; flex-direction: column; gap: 6px; }
-.rw-select-item {
-  border: 1px solid var(--border-strong);
-  background: var(--cream-deep);
-  border-radius: 8px;
-  padding: 9px 12px;
-  text-align: left;
-  cursor: pointer;
-  font-family: var(--sans);
+.rw-glow {
+  position: absolute; inset: 0;
+  background: radial-gradient(circle at 50% 0%, var(--accent-soft), transparent 70%);
+  animation: rw-pulse 2s ease-in-out infinite;
 }
-.rw-select-item:hover { transform: translateX(2px); }
-.rw-select-new { display: flex; gap: 8px; }
-.rw-select-new input {
-  flex: 1;
-  border: 1px solid var(--border-strong);
-  border-radius: 8px;
-  padding: 8px 10px;
-  font-family: var(--sans);
-  background: var(--card);
+@keyframes rw-pulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
 }
-.rw-select-new button {
-  border: 1px solid var(--accent-deep);
-  background: var(--accent);
-  color: #fff;
-  border-radius: 8px;
-  padding: 8px 12px;
-  cursor: pointer;
-  font-family: var(--sans);
+.rw-current-inner { position: relative; z-index: 10; display: flex; flex-direction: column; align-items: center; }
+.rw-icon {
+  width: 48px; height: 48px; border-radius: 999px;
+  display: inline-flex; align-items: center; justify-content: center;
+  margin-bottom: 12px;
 }
+.rw-label {
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.2em; margin-bottom: 4px;
+}
+/* 类型色调（Dayflow 令牌化）：training 绿 / gpu-idle 红 / notification 天蓝 / reminder 琥珀 / standard 蓝 */
+.rw-tone-training { background: color-mix(in srgb, var(--green) 18%, transparent); color: var(--green); }
+.rw-tone-gpu-idle { background: color-mix(in srgb, var(--red) 15%, transparent); color: var(--red); }
+.rw-tone-notification { background: color-mix(in srgb, var(--sky) 20%, transparent); color: var(--blue); }
+.rw-tone-reminder { background: rgba(217, 119, 6, 0.14); color: #b45309; }
+.rw-tone-standard { background: color-mix(in srgb, var(--blue) 14%, transparent); color: var(--blue); }
+.rw-tasktitle {
+  font-size: 20px; font-weight: 700; color: var(--text);
+  margin-bottom: 16px; line-height: 1.3; padding: 0 8px;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.rw-btns { width: 100%; display: flex; flex-direction: column; gap: 8px; }
+.rw-complete {
+  width: 100%; padding: 12px 0; border-radius: 8px; font-weight: 700; font-size: 14px;
+  color: #fff; display: flex; align-items: center; justify-content: center; gap: 8px;
+  transition: transform var(--duration-fast) var(--ease-out), filter var(--duration-fast) ease;
+  box-shadow: var(--shadow-card);
+}
+.rw-complete:hover { transform: scale(1.02); filter: brightness(1.06); }
+.rw-complete:active { transform: scale(0.98); }
+.rw-complete.rw-blue { background: var(--blue); }
+.rw-complete.rw-green { background: var(--green); }
+.rw-keycap {
+  font-size: 10px; background: rgba(255, 255, 255, 0.25); padding: 2px 6px;
+  border-radius: 4px; margin-left: 8px; font-family: var(--mono, monospace);
+}
+.rw-subrow { display: flex; gap: 8px; width: 100%; }
+.rw-sub {
+  flex: 1; padding: 8px 0; border-radius: 8px; font-weight: 600; font-size: 12px;
+  background: var(--inset); color: var(--text-dim); border: 1px solid var(--border);
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+  font-family: inherit; cursor: pointer;
+}
+.rw-sub:hover { background: var(--cream-deep); color: var(--text); }
+.rw-wide { width: 100%; padding: 12px 0; }
+
+/* 其他待处理（底部滚动区） */
+.rw-pending {
+  flex: 1; overflow-y: auto;
+  background: color-mix(in srgb, var(--cream-deep) 55%, transparent);
+  border-top: 1px solid var(--border);
+}
+.rw-pending::-webkit-scrollbar { width: 6px; }
+.rw-pending::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 3px; }
+.rw-pending-head {
+  position: sticky; top: 0; z-index: 10; padding: 8px 16px;
+  font-size: 10px; font-weight: 900; color: var(--text-faint); text-transform: uppercase;
+  letter-spacing: 0.1em; display: flex; align-items: center; gap: 8px;
+  background: color-mix(in srgb, var(--card) 92%, transparent);
+  backdrop-filter: blur(6px); border-bottom: 1px solid var(--border);
+}
+.rw-dot {
+  width: 6px; height: 6px; border-radius: 999px; background: #d97706;
+  animation: rw-pulse 2s ease-in-out infinite;
+}
+.rw-pending-list { padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.rw-prow {
+  display: flex; justify-content: space-between; align-items: center; padding: 10px;
+  border-radius: 8px; background: var(--card); border: 1px solid var(--border); cursor: pointer;
+}
+.rw-prow:hover { background: var(--inset); }
+.rw-prow-title {
+  font-size: 12px; font-weight: 500; color: var(--text);
+  display: flex; align-items: center; gap: 8px; overflow: hidden;
+  white-space: nowrap; text-overflow: ellipsis;
+}
+.rw-prow-done {
+  font-size: 10px; color: var(--text-faint); background: var(--inset);
+  padding: 4px 8px; border-radius: 4px; flex-shrink: 0; margin-left: 8px;
+}
+.rw-prow:hover .rw-prow-done { color: var(--green); background: color-mix(in srgb, var(--green) 10%, transparent); }
+.rw-pulse { animation: rw-pulse 2s ease-in-out infinite; }
+
+/* Assign Project 视图（无项目完成时） */
+.rw-sel-head { padding: 24px; border-bottom: 1px solid var(--border); background: var(--card-soft); }
+.rw-sel-label {
+  font-size: 12px; font-weight: 700; color: var(--blue);
+  text-transform: uppercase; letter-spacing: 0.1em; margin: 0 0 8px;
+}
+.rw-sel-tasktitle {
+  font-size: 18px; color: var(--text); margin: 0;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.rw-sel-list { flex: 1; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 4px; }
+.rw-sel-list::-webkit-scrollbar { width: 6px; }
+.rw-sel-list::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 3px; }
+.rw-sel-hint { font-size: 10px; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; padding: 0 8px; }
+.rw-sel-item {
+  width: 100%; text-align: left; padding: 12px; border-radius: 8px;
+  display: flex; justify-content: space-between; align-items: center;
+  border: 1px solid transparent; background: none; cursor: pointer; font-family: inherit;
+}
+.rw-sel-item:hover { background: color-mix(in srgb, var(--blue) 10%, transparent); border-color: color-mix(in srgb, var(--blue) 40%, transparent); }
+.rw-sel-name {
+  display: inline-flex; align-items: center; gap: 12px;
+  font-weight: 500; font-size: 13px; color: var(--text-dim);
+}
+.rw-sel-item:hover .rw-sel-name { color: var(--text); }
+.rw-sel-dot { width: 8px; height: 8px; border-radius: 999px; display: inline-block; }
+.rw-sel-ico { color: var(--text-faint); display: inline-flex; }
+.rw-sel-item:hover .rw-sel-ico { color: var(--blue); }
+.rw-sel-new { display: flex; gap: 6px; padding: 8px; }
+.rw-sel-new input {
+  flex: 1; min-width: 0; border: 1px solid var(--border-strong); border-radius: 8px;
+  padding: 8px 12px; color: var(--text); font-size: 12px; outline: none; font-family: var(--sans); background: #fffefc;
+}
+.rw-sel-new input:focus { border-color: var(--accent); }
+.rw-sel-new button {
+  padding: 8px 12px; border-radius: 8px; background: var(--inset); color: var(--text-dim);
+  border: 1px solid var(--border); font-size: 12px; cursor: pointer; font-family: inherit;
+}
+.rw-sel-new button:hover { background: var(--cream-deep); color: var(--text); }
+.rw-sel-foot { padding: 12px; background: var(--card-soft); border-top: 1px solid var(--border); }
 
 /* ===== Spotlight（#/spotlight）—— 布局对齐 EpochToDo 原版，色系统一 Dayflow 令牌 ===== */
 .sw-root {
