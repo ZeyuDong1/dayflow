@@ -18,6 +18,10 @@ export interface WindowGeom {
   clientY: number
   clientWidth: number
   clientHeight: number
+  frameLeft: number // DWM 可见框(排除隐形边框的真实可见范围,物理像素)
+  frameTop: number
+  frameRight: number
+  frameBottom: number
 }
 
 /**
@@ -39,6 +43,11 @@ const GetClientRect = u32.func('bool GetClientRect(intptr_t hwnd, int32_t *rect)
 const ClientToScreen = u32.func('bool ClientToScreen(intptr_t hwnd, int32_t *point)')
 const IsIconic = u32.func('bool IsIconic(intptr_t hwnd)')
 const IsWindow = u32.func('bool IsWindow(intptr_t hwnd)')
+// DWMWA_EXTENDED_FRAME_BOUNDS = 9:真实可见框(不含隐形边框,含可见边框+标题栏)
+const dwm = koffi.load('dwmapi.dll')
+const DwmGetWindowAttribute = dwm.func(
+  'int32 DwmGetWindowAttribute(intptr_t hwnd, uint32 attr, int32_t *out, uint32 cb)'
+)
 
 /** 窗口几何:外框矩形 + 客户区矩形(=标题栏以下的内容区)+ 标题栏高度。
  * 客户区是覆盖目标的精确语义;外框含隐形边框(DPI 相关),不能直接换算摆放。 */
@@ -55,6 +64,10 @@ export function getWindowGeom(hwnd: number): WindowGeom | null {
     let clientY = top
     let clientWidth = width
     let clientHeight = height
+    let frameLeft = left
+    let frameTop = top
+    let frameRight = left + width
+    let frameBottom = top + height
     const cr = new Int32Array(4)
     const pt = new Int32Array(2)
     if (GetClientRect(hwnd, cr) && ClientToScreen(hwnd, pt)) {
@@ -65,7 +78,29 @@ export function getWindowGeom(hwnd: number): WindowGeom | null {
       clientWidth = cr[2]
       clientHeight = cr[3]
     }
-    return { left, top, width, height, titleBarHeight, clientX, clientY, clientWidth, clientHeight }
+    // 真实可见框(GetWindowRect 含 ~8px×DPI 的隐形边框,肉眼可见范围以 DWM 为准)
+    const fb = new Int32Array(4)
+    if (DwmGetWindowAttribute(hwnd, 9, fb, 16) === 0) {
+      frameLeft = fb[0]
+      frameTop = fb[1]
+      frameRight = fb[2]
+      frameBottom = fb[3]
+    }
+    return {
+      left,
+      top,
+      width,
+      height,
+      titleBarHeight,
+      clientX,
+      clientY,
+      clientWidth,
+      clientHeight,
+      frameLeft,
+      frameTop,
+      frameRight,
+      frameBottom
+    }
   } catch {
     return null
   }

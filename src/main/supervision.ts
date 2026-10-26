@@ -208,26 +208,45 @@ function physToDip(phys: {
   }
 }
 
-function showInterrupt(ep: Episode, geom: WindowGeom): void {
-  // 覆盖目标 = 违规窗口的客户区(=标题栏以下的内容区,天然让出标题栏)。
-  // 几何来自 user32(物理像素),Electron setBounds 用逻辑像素(DIP)。
-  const contentPhys = {
-    x: geom.clientX,
+/**
+ * 覆盖矩形(DIP):DWM 可见框横向全盖(可见边框也算应用的一部分),
+ * 顶部从客户区顶开始(让出标题栏),底部到可见框底。
+ * 可见框用 DWM 扩展边框——GetWindowRect 的外框含 ~8px×DPI 隐形边框,
+ * 高分屏上那道缝隙就是"没对准"的来源之一。
+ */
+function coverageDipFrom(geom: WindowGeom): { x: number; y: number; width: number; height: number } {
+  const phys = {
+    x: geom.frameLeft,
     y: geom.clientY,
-    width: geom.clientWidth,
-    height: geom.clientHeight
+    width: Math.max(1, geom.frameRight - geom.frameLeft),
+    height: Math.max(1, geom.frameBottom - geom.clientY)
   }
-  const dip = physToDip(contentPhys)
-  const naive = screen.screenToDipRect(null, contentPhys) // 对照:主屏统一缩放(副屏会偏)
-  const x = dip.x
-  const y = dip.y
-  const w = Math.max(360, dip.width)
-  const h = Math.max(260, dip.height)
+  const dip = physToDip(phys)
+  return {
+    x: Math.round(dip.x),
+    y: Math.round(dip.y),
+    width: Math.max(360, Math.round(dip.width)),
+    height: Math.max(260, Math.round(dip.height))
+  }
+}
+
+function showInterrupt(ep: Episode, geom: WindowGeom): void {
+  const bounds = coverageDipFrom(geom)
+  const naive = screen.screenToDipRect(
+    null,
+    {
+      x: geom.frameLeft,
+      y: geom.clientY,
+      width: Math.max(1, geom.frameRight - geom.frameLeft),
+      height: Math.max(1, geom.frameBottom - geom.clientY)
+    }
+  ) // 对照:主屏统一缩放(副屏会偏)
+  const { x, y, width: w, height: h } = bounds
   const topo = calibrateDisplays()
     .map((c) => `${c.scale}@phys${c.physOrigin.x},${c.physOrigin.y}→dip(${c.dip.x},${c.dip.y})`)
     .join(' | ')
   console.log(
-    `[supervision] bounds client=${geom.clientX},${geom.clientY} ${geom.clientWidth}x${geom.clientHeight} → per-monitor=${x},${y} ${w}x${h} naive=${naive.x},${naive.y} ${naive.width}x${naive.height} displays=[${topo}]`
+    `[supervision] bounds frame=${geom.frameLeft},${geom.frameTop}..${geom.frameRight},${geom.frameBottom} clientTop=${geom.clientY} → per-monitor=${x},${y} ${w}x${h} naive=${naive.x},${naive.y} ${naive.width}x${naive.height} displays=[${topo}]`
   )
 
   if (interruptWin && !interruptWin.isDestroyed()) {
@@ -288,7 +307,9 @@ function showInterrupt(ep: Episode, geom: WindowGeom): void {
 
   // 面板与违规窗口绑定:违规窗口最小化/关闭 → 自动消失;
   // 连续两次观察到"第三方前台"才判切走(目标应用自己的弹窗/右键菜单
-  // 按 pid 归为同一方,不算切走)
+  // 按 pid 归为同一方,不算切走)。
+  // 同时面板实时跟随目标窗口的移动/缩放(拖不走),并纠正任何边界漂移
+  // (如跨屏 DPI 变更时系统对面板矩形的改写)。
   const targetHwnd = ep.hwnd
   const targetPid = ep.pid
   let awayStrikes = 0
@@ -298,6 +319,23 @@ function showInterrupt(ep: Episode, geom: WindowGeom): void {
       logEvent('interrupt-auto-close', ep.appName, ep.title, '违规窗口已最小化/关闭')
       closeInterrupt()
       return
+    }
+    // 跟随目标窗口 + 纠偏:目标几何变了(拖动/缩放/最大化)→ 面板跟上;
+    // 目标没变而面板边界偏离意图(如 DPI 变更被系统改写)→ 纠正回来
+    const g = getWindowGeom(targetHwnd)
+    if (g) {
+      const want = coverageDipFrom(g)
+      const cur = interruptWin.getBounds()
+      const drifted =
+        Math.abs(cur.x - want.x) > 2 ||
+        Math.abs(cur.y - want.y) > 2 ||
+        Math.abs(cur.width - want.width) > 2 ||
+        Math.abs(cur.height - want.height) > 2
+      if (drifted) {
+        const moved = Math.abs(cur.x - want.x) > 2 || Math.abs(cur.y - want.y) > 2
+        interruptWin.setBounds(want)
+        if (moved) logEvent('interrupt-follow', ep.appName, ep.title, `→ ${want.x},${want.y} ${want.width}x${want.height}`)
+      }
     }
     // 预览期:只演示"最小化/关闭即消失",切走不关(方便慢慢看效果)
     if (Date.now() < previewUntil) return
