@@ -684,32 +684,40 @@ export default function SettingsPage({ onSaved }: { onSaved: () => void }): Reac
               <div className="settings-row-label">AFK 判定(Y)</div>
               <div className="settings-row-help">无操作超过 Y 分钟后再次使用电脑,视为新会话开始。</div>
             </div>
-            <select
-              value={settings.tutor.sessionPromptAfkMin}
-              onChange={(e) => patch({ tutor: { sessionPromptAfkMin: Number(e.target.value) } })}
-            >
-              {[2, 5, 10, 20, 30, 60].map((m) => (
-                <option key={m} value={m}>
-                  {m} 分钟
-                </option>
-              ))}
-            </select>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <input
+                type="number"
+                min={1}
+                max={240}
+                style={{ width: 90, padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border-strong)' }}
+                value={settings.tutor.sessionPromptAfkMin}
+                onChange={(e) => {
+                  const n = Math.round(Number(e.target.value))
+                  if (Number.isFinite(n) && n >= 1) patch({ tutor: { sessionPromptAfkMin: Math.min(240, n) } })
+                }}
+              />
+              <span className="settings-row-help">分钟</span>
+            </span>
           </div>
           <div className="settings-row">
             <div>
               <div className="settings-row-label">跳过间隔(X)</div>
               <div className="settings-row-help">选择"跳过"后,X 分钟再次弹窗询问。</div>
             </div>
-            <select
-              value={settings.tutor.sessionPromptSnoozeMin}
-              onChange={(e) => patch({ tutor: { sessionPromptSnoozeMin: Number(e.target.value) } })}
-            >
-              {[1, 2, 5, 10, 15, 30].map((m) => (
-                <option key={m} value={m}>
-                  {m} 分钟
-                </option>
-              ))}
-            </select>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <input
+                type="number"
+                min={1}
+                max={240}
+                style={{ width: 90, padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border-strong)' }}
+                value={settings.tutor.sessionPromptSnoozeMin}
+                onChange={(e) => {
+                  const n = Math.round(Number(e.target.value))
+                  if (Number.isFinite(n) && n >= 1) patch({ tutor: { sessionPromptSnoozeMin: Math.min(240, n) } })
+                }}
+              />
+              <span className="settings-row-help">分钟</span>
+            </span>
           </div>
         </div>
         <div className="panel">
