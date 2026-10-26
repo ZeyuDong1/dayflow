@@ -239,6 +239,9 @@ const api = {
     ipcRenderer.invoke('supervision:preview', strict),
   supervisionInterruptState: (): Promise<Record<string, unknown> | null> =>
     ipcRenderer.invoke('supervision:interruptState'),
+  supervisionMinimizeTarget: (): Promise<boolean> =>
+    ipcRenderer.invoke('supervision:minimizeTarget'),
+  supervisionCloseTarget: (): Promise<boolean> => ipcRenderer.invoke('supervision:closeTarget'),
   onSupervisionInterrupt: (cb: (payload: Record<string, unknown>) => void): (() => void) => {
     const listener = (_e: unknown, payload: Record<string, unknown>): void => cb(payload)
     ipcRenderer.on('supervision:interrupt', listener)

@@ -112,7 +112,24 @@ export default function InterruptOverlay(): React.ReactElement {
                 今天到此为止
               </button>
             </div>
-            <div className="itx-hint">把底下的窗口最小化或关闭,这个提示也会自动消失。</div>
+            <div className="itx-approw">
+              <span className="itx-applabel">{state.appName ? `被拦的应用:${state.appName}` : '被拦的应用'}</span>
+              <button
+                className="btn ghost small"
+                title="最小化被拦截的应用,本提示随之消失"
+                onClick={() => void window.dayflow.supervisionMinimizeTarget()}
+              >
+                最小化它
+              </button>
+              <button
+                className="btn ghost small itx-danger"
+                title="关闭被拦截的应用(应用可能弹保存确认)"
+                onClick={() => void window.dayflow.supervisionCloseTarget()}
+              >
+                关闭它
+              </button>
+            </div>
+            <div className="itx-hint">面板盖住了这个应用,最小化/关闭请用上面的按钮,提示会自动消失。</div>
           </>
         )}
       </div>

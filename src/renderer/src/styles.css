@@ -1517,6 +1517,32 @@ label.field {
   flex-wrap: wrap;
 }
 
+.itx-approw {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.itx-applabel {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 45%;
+}
+
+.btn.ghost.itx-danger {
+  color: #c74e4e;
+}
+
+.btn.ghost.itx-danger:hover {
+  border-color: #e8a5a5;
+  background: #fff5f2;
+}
+
 .itx-hint {
   font-size: 11.5px;
   color: var(--text-faint);

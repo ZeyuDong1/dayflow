@@ -43,6 +43,8 @@ const GetClientRect = u32.func('bool GetClientRect(intptr_t hwnd, int32_t *rect)
 const ClientToScreen = u32.func('bool ClientToScreen(intptr_t hwnd, int32_t *point)')
 const IsIconic = u32.func('bool IsIconic(intptr_t hwnd)')
 const IsWindow = u32.func('bool IsWindow(intptr_t hwnd)')
+const ShowWindow = u32.func('bool ShowWindow(intptr_t hwnd, int cmd)')
+const PostMessageW = u32.func('bool PostMessageW(intptr_t hwnd, uint32 msg, uintptr_t wp, intptr_t lp)')
 // DWMWA_EXTENDED_FRAME_BOUNDS = 9:真实可见框(不含隐形边框,含可见边框+标题栏)
 const dwm = koffi.load('dwmapi.dll')
 const DwmGetWindowAttribute = dwm.func(
@@ -110,6 +112,24 @@ export function getWindowGeom(hwnd: number): WindowGeom | null {
 export function isWindowUsable(hwnd: number): boolean {
   try {
     return IsWindow(hwnd) && !IsIconic(hwnd)
+  } catch {
+    return false
+  }
+}
+
+/** 最小化窗口(等价标题栏最小化按钮,SW_MINIMIZE=6)。强打断面板的"放它一马"出口。 */
+export function minimizeWindow(hwnd: number): boolean {
+  try {
+    return !!ShowWindow(hwnd, 6)
+  } catch {
+    return false
+  }
+}
+
+/** 温和关闭窗口(等价标题栏关闭按钮,WM_CLOSE=0x0010;应用可弹"未保存"确认)。 */
+export function closeWindow(hwnd: number): boolean {
+  try {
+    return !!PostMessageW(hwnd, 0x0010, 0, 0)
   } catch {
     return false
   }

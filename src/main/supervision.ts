@@ -5,9 +5,11 @@ import { todayKey } from './paths'
 import { db } from './db'
 import { classifyActivity, listProjects } from './projects'
 import {
+  closeWindow,
   getForegroundInfoSync,
   getWindowGeom,
   isWindowUsable,
+  minimizeWindow,
   type ForegroundInfo,
   type WindowGeom
 } from './foreground'
@@ -60,6 +62,13 @@ let lastShowAt = 0 // 上次面板弹出时刻,重弹最小间隔用
 const CALM_LEARN_SEC = 8 // 持续学习这么久才算真回学习
 const CALM_NEUTRAL_SEC = 30 // 持续中立这么久才重置分心状态
 const RESHOW_GAP_MS = 30_000 // 两次弹出的最小间隔(防抖/防闪)
+// 切回"最近弹过面板的违规窗口"的记忆时长:面板因切走自动消失只是给别的
+// 窗口让路,不代表赦免——记忆期内回到同一违规窗口立即重新覆盖,不留逃逸口。
+const RETURN_MEMORY_MS = 10 * 60_000
+
+let panelTargetHwnd = 0 // 面板当前覆盖的目标窗口(最小化/关闭出口用)
+let panelTargetApp = '' // 目标应用名(日志用)
+const lastPanelByHwnd = new Map<number, number>() // hwnd → 上次面板弹出时刻
 
 function logEvent(type: string, appName: string | null, title: string | null, detail: string | null): void {
   try {
@@ -112,6 +121,24 @@ function closeInterrupt(): void {
   if (interruptWin && !interruptWin.isDestroyed()) interruptWin.close()
   interruptWin = null
   overlayHwnd = 0
+  panelTargetHwnd = 0
+  panelTargetApp = ''
+}
+
+/** 面板出口:最小化被覆盖的应用(等价标题栏最小化)。之后目标不可用 → 面板自动消失。 */
+export function minimizeInterruptTarget(): boolean {
+  if (!panelTargetHwnd) return false
+  const ok = minimizeWindow(panelTargetHwnd)
+  if (ok) logEvent('interrupt-target-minimize', panelTargetApp, null, null)
+  return ok
+}
+
+/** 面板出口:温和关闭被覆盖的应用(WM_CLOSE,应用可弹"未保存"确认)。 */
+export function closeInterruptTarget(): boolean {
+  if (!panelTargetHwnd) return false
+  const ok = closeWindow(panelTargetHwnd)
+  if (ok) logEvent('interrupt-target-close', panelTargetApp, null, null)
+  return ok
 }
 
 // ---------------------------------------------------------------------------
@@ -296,6 +323,8 @@ function showInterrupt(ep: Episode, geom: WindowGeom): void {
     }
   })
   interruptWin = win
+  panelTargetHwnd = ep.hwnd
+  panelTargetApp = ep.appName
   // 记录面板自身 hwnd:自识别必须用句柄——页面 <title> 在 React 挂载前
   // 会把窗口标题顶成 'Dayflow',标题判断有竞态(曾导致面板自关闪烁)
   try {
@@ -522,17 +551,21 @@ async function tickInner(): Promise<void> {
   calmSince = 0
 
   if (!episode || episode.hwnd !== fg.hwnd) {
+    // 近期在该窗口弹过面板(RETURN_MEMORY_MS 内)= 热违规:不再走轻提醒阶梯,
+    // 专注计时按已到期回填——切回来立刻重新覆盖,而不是再给一轮宽限。
+    const recentPanelTs = lastPanelByHwnd.get(fg.hwnd)
+    const hot = recentPanelTs != null && Date.now() - recentPanelTs < RETURN_MEMORY_MS
     episode = {
       hwnd: fg.hwnd,
       pid: fg.pid,
       appName: fg.appName,
       title: fg.windowTitle,
-      startTs: Date.now(),
-      gentleSent: false,
-      postponed: false,
+      startTs: hot ? Date.now() - (settings.tutor.interruptSec + 5) * 1000 : Date.now(),
+      gentleSent: hot,
+      postponed: hot,
       lastInterruptAt: 0
     }
-    logEvent('deviation-start', fg.appName, fg.windowTitle, null)
+    logEvent('deviation-start', fg.appName, fg.windowTitle, hot ? 'hot-return' : null)
   }
 
   const devSec = (Date.now() - episode.startTs) / 1000
@@ -565,18 +598,27 @@ async function tickInner(): Promise<void> {
 
   // 强打断 / 重复:面板已开时只移位/刷新内容(同一次打断的延续,立即跟随
   // 新违规窗口);面板已关时才重新弹出,且受重复间隔 + 两次弹出最小间隔
-  // 双重门控(防抖防闪)。
+  // 双重门控(防抖防闪)——唯一例外:回到"最近弹过面板的同一窗口"立即覆盖。
   const panelOpen = !!interruptWin && !interruptWin.isDestroyed()
   const repeatDue =
     Date.now() - episode.lastInterruptAt >= Math.max(60, settings.tutor.repeatSec) * 1000
   const gapDue = Date.now() - lastShowAt >= RESHOW_GAP_MS
+  const recentPanelTs = lastPanelByHwnd.get(fg.hwnd)
+  const returningToPanelled = recentPanelTs != null && Date.now() - recentPanelTs < RETURN_MEMORY_MS
   const due =
     devSec >= settings.tutor.interruptSec &&
-    (panelOpen ? episode.lastInterruptAt === 0 || repeatDue : repeatDue && gapDue)
+    (panelOpen
+      ? episode.lastInterruptAt === 0 || repeatDue
+      : returningToPanelled || (repeatDue && gapDue))
   if (due) {
     const geom = getWindowGeom(fg.hwnd)
     if (geom) {
       episode.lastInterruptAt = Date.now()
+      if (lastPanelByHwnd.size > 64) {
+        const cutoff = Date.now() - 3_600_000
+        for (const [h, ts] of lastPanelByHwnd) if (ts < cutoff) lastPanelByHwnd.delete(h)
+      }
+      lastPanelByHwnd.set(episode.hwnd, Date.now())
       lastPayload = await interruptPayload(episode)
       showInterrupt(episode, geom)
       logEvent('interrupt', episode.appName, episode.title, `分心 ${Math.round(devSec / 60)} 分钟`)
