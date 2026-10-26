@@ -245,6 +245,8 @@ const api = {
   supervisionMinimizeTarget: (): Promise<boolean> =>
     ipcRenderer.invoke('supervision:minimizeTarget'),
   supervisionCloseTarget: (): Promise<boolean> => ipcRenderer.invoke('supervision:closeTarget'),
+  supervisionWhitelistProject: (projectId: number): Promise<boolean> =>
+    ipcRenderer.invoke('supervision:whitelist-project', projectId),
   onSupervisionInterrupt: (cb: (payload: Record<string, unknown>) => void): (() => void) => {
     const listener = (_e: unknown, payload: Record<string, unknown>): void => cb(payload)
     ipcRenderer.on('supervision:interrupt', listener)

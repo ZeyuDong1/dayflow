@@ -7,6 +7,7 @@ import React, { useEffect, useRef, useState } from 'react'
  */
 
 interface InterruptMatch {
+  projectId?: number
   project: string
   score: number
   source: string
@@ -111,6 +112,18 @@ export default function InterruptOverlay(): React.ReactElement {
             {MATCH_SOURCE_LABEL[state.match.source] ?? state.match.source}
             {state.match.matched ? ` · ${state.match.matched}` : ''}
             {state.match.whitelist ? ' · 不在学习白名单' : ''}
+            {state.match.whitelist && state.match.projectId != null && (
+              <>
+                {' '}
+                <button
+                  className="itx-wl-btn"
+                  title="这个项目其实在学?加入白名单后不再被打断"
+                  onClick={() => void window.dayflow.supervisionWhitelistProject(state.match!.projectId!)}
+                >
+                  加入学习白名单
+                </button>
+              </>
+            )}
           </div>
         )}
 

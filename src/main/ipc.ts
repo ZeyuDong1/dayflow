@@ -218,6 +218,7 @@ export function registerIpc(win: BrowserWindow): void {
   ipcMain.handle('supervision:interruptState', () => supervision.getInterruptState())
   // 强打断面板出口:最小化/关闭被覆盖的应用(等价标题栏按钮,面板盖住了它们)
   ipcMain.handle('supervision:minimizeTarget', () => supervision.minimizeInterruptTarget())
+  ipcMain.handle('supervision:whitelist-project', (_e, projectId: number) => supervision.whitelistProject(projectId))
   ipcMain.handle('supervision:closeTarget', () => supervision.closeInterruptTarget())
 
   // -- Export ------------------------------------------------------------------

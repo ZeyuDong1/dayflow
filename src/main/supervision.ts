@@ -1,6 +1,6 @@
 import { BrowserWindow, Notification, app, powerMonitor, screen } from 'electron'
 import path from 'path'
-import { getSettings } from './settings'
+import { getSettings, saveSettings } from './settings'
 import { todayKey } from './paths'
 import { db } from './db'
 import { classifyActivity, classifyActivityDetail, listProjects } from './projects'
@@ -401,11 +401,14 @@ async function interruptPayload(ep: Episode): Promise<Record<string, unknown>> {
   const match =
     detail && proj
       ? {
+          projectId: detail.projectId,
           project: proj.title,
           score: proj.productivityScore,
           source: detail.source,
           matched: detail.matched,
-          whitelist: settings.tutor.allowedProjectIds.length > 0
+          whitelist:
+            settings.tutor.allowedProjectIds.length > 0 &&
+            !settings.tutor.allowedProjectIds.includes(detail.projectId)
         }
       : null
   return {
@@ -533,6 +536,19 @@ export function supervisionStatus(): {
     overlayOpen: !!interruptWin,
     breakBalanceMinutes: Math.floor(breakBalanceMs / 60000)
   }
+}
+
+/** 面板出口:把命中的项目加入学习白名单(用户选择而非默认黑名单)。
+ * 加入后本次分心判定翻转为学习,立即收面板并清空 episode。 */
+export function whitelistProject(projectId: number): boolean {
+  const settings = getSettings()
+  if (settings.tutor.allowedProjectIds.includes(projectId)) return true
+  saveSettings({ tutor: { allowedProjectIds: [...settings.tutor.allowedProjectIds, projectId] } })
+  logEvent('whitelist-project', null, null, String(projectId))
+  episode = null
+  calmSince = 0
+  closeInterrupt()
+  return true
 }
 
 /**

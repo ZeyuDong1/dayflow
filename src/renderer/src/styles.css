@@ -1535,6 +1535,21 @@ label.field {
   flex-wrap: wrap;
 }
 
+.itx-wl-btn {
+  border: 1px solid var(--accent);
+  color: var(--accent-deep);
+  background: var(--accent-soft);
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 11px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.itx-wl-btn:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
 .itx-cd {
   font-size: 11px;
   color: var(--text-faint);
