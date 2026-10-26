@@ -1,6 +1,7 @@
 import { app } from 'electron'
-import { spawn, type ChildProcess } from 'child_process'
+import { execFileSync, spawn, type ChildProcess } from 'child_process'
 import path from 'path'
+import crypto from 'crypto'
 import fs from 'fs'
 
 /**
@@ -23,6 +24,7 @@ export interface MemoryServerInfo {
   binaryPath: string
   version: string
   lastError: string | null
+  downloading: boolean
 }
 
 let child: ChildProcess | null = null
@@ -32,6 +34,7 @@ let stopping = false
 let lastError: string | null = null
 let readyWaiters: ((ok: boolean) => void)[] = []
 let healthTimer: NodeJS.Timeout | null = null
+let fetchPromise: Promise<string | null> | null = null
 
 function binaryPath(): string {
   // 打包后 extraResources 放在 process.resourcesPath/ai-memory/；
@@ -97,14 +100,82 @@ function settleWaiters(ok: boolean): void {
   for (const w of waiters) w(ok)
 }
 
+/**
+ * 自动补齐二进制(应用内替代 npm run fetch-ai-memory):按 manifest.json 的
+ * 版本从 GitHub Release 下载 zip,sha256 校验后解压出 ai-memory.exe。
+ * 单飞:并发调用共享同一个下载;失败信息写 lastError 供设置页展示。
+ */
+async function fetchBinary(dir: string): Promise<string> {
+  const manifestPath = path.join(dir, 'manifest.json')
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8')) as {
+    version: string
+    sha256: string
+    fetchedAt?: string
+  }
+  const { version, sha256 } = manifest
+  const zipName = 'ai-memory-windows-x86_64.zip'
+  const tmp = path.join(dir, zipName)
+  lastError = `正在自动下载 ai-memory v${version}…`
+  console.log('[memory]', lastError)
+  const res = await fetch(`https://github.com/akitaonrails/ai-memory/releases/download/v${version}/${zipName}`, {
+    signal: AbortSignal.timeout(120_000)
+  })
+  if (!res.ok) throw new Error(`下载失败 HTTP ${res.status}`)
+  fs.writeFileSync(tmp, Buffer.from(await res.arrayBuffer()))
+  const actual = crypto.createHash('sha256').update(fs.readFileSync(tmp)).digest('hex')
+  if (actual !== sha256) {
+    fs.unlinkSync(tmp)
+    throw new Error('sha256 校验失败')
+  }
+  const outDir = path.join(dir, '.tmp')
+  fs.rmSync(outDir, { recursive: true, force: true })
+  execFileSync(
+    'powershell',
+    [
+      '-NoProfile', '-Command',
+      `Expand-Archive -Path '${tmp.replace(/'/g, "''")}' -DestinationPath '${outDir.replace(/'/g, "''")}' -Force`
+    ],
+    { windowsHide: true, stdio: 'ignore' }
+  )
+  fs.copyFileSync(path.join(outDir, 'ai-memory.exe'), path.join(dir, 'ai-memory.exe'))
+  fs.rmSync(outDir, { recursive: true, force: true })
+  fs.unlinkSync(tmp)
+  manifest.fetchedAt = new Date().toISOString()
+  fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n')
+  return path.join(dir, 'ai-memory.exe')
+}
+
+async function ensureBinary(): Promise<string | null> {
+  const exe = binaryPath()
+  if (fs.existsSync(exe)) return exe
+  const dir = path.dirname(exe)
+  if (!fs.existsSync(path.join(dir, 'manifest.json'))) {
+    lastError = `ai-memory 二进制缺失且无 manifest.json（${exe}），无法自动下载。`
+    console.warn('[memory] ' + lastError)
+    return null
+  }
+  if (!fetchPromise) {
+    fetchPromise = (async () => {
+      try {
+        return await fetchBinary(dir)
+      } catch (e) {
+        lastError = `ai-memory 自动下载失败：${e instanceof Error ? e.message : String(e)}（可检查网络后重启，或手动运行 npm run fetch-ai-memory）`
+        console.warn('[memory] auto-fetch failed:', e)
+        return null
+      } finally {
+        fetchPromise = null
+      }
+    })()
+  }
+  return fetchPromise
+}
+
 export async function startMemoryServer(): Promise<boolean> {
   if (child) return true
   stopping = false
 
-  const exe = binaryPath()
-  if (!fs.existsSync(exe)) {
-    lastError = `ai-memory 二进制缺失（${exe}）。运行 npm run fetch-ai-memory 下载。`
-    console.warn('[memory] ' + lastError)
+  const exe = await ensureBinary()
+  if (!exe) {
     settleWaiters(false)
     return false
   }
@@ -175,7 +246,8 @@ export function memoryServerInfo(): MemoryServerInfo {
     dataDir: memoryDataDir(),
     binaryPath: binaryPath(),
     version: binaryVersion(),
-    lastError
+    lastError,
+    downloading: !!fetchPromise
   }
 }
 

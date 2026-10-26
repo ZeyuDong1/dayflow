@@ -213,6 +213,7 @@ const api = {
     binaryPath: string
     version: string
     lastError: string | null
+    downloading: boolean
   }> => ipcRenderer.invoke('tutor:status'),
   tutorReflectNow: (): Promise<boolean> => ipcRenderer.invoke('tutor:reflectNow'),
   tutorStartMemory: (): Promise<boolean> => ipcRenderer.invoke('tutor:startMemory'),
