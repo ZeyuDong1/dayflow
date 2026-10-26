@@ -318,13 +318,14 @@ export default function App(): React.ReactElement {
             onDataChanged={refresh}
             onOpenProject={(id) => {
               setFocusProjectId(id)
-              setNav('projects')
+              setNav('review')
             }}
           />
         )}
         {nav === 'tasks' && <TaskPage />}
         {nav === 'review' && <ReviewPage />}
-        {nav === 'projects' && <ProjectsPage onDataChanged={refresh} focusProjectId={focusProjectId} />}
+        {nav === 'projects' && <ProjectsPage onDataChanged={refresh} />}
+        {nav === 'review' && <ReviewPage focusProjectId={focusProjectId} />}
         {nav === 'daily' && <DailyPage />}
         {nav === 'weekly' && <WeeklyPage />}
         {nav === 'chat' && <ChatPage />}

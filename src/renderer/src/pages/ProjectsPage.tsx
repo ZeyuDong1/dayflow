@@ -18,7 +18,6 @@ const SWATCHES = [
 
 interface Props {
   onDataChanged: () => void
-  focusProjectId?: number | null
 }
 
 interface Draft {
@@ -47,7 +46,7 @@ function draftOf(p: Project): Draft {
   }
 }
 
-export default function ProjectsPage({ onDataChanged, focusProjectId }: Props): React.ReactElement {
+export default function ProjectsPage({ onDataChanged }: Props): React.ReactElement {
   const [projects, setProjects] = useState<Project[]>([])
   const [overview, setOverview] = useState<ProjectsOverview | null>(null)
   const [rules, setRules] = useState<Rule[]>([])
@@ -69,10 +68,6 @@ export default function ProjectsPage({ onDataChanged, focusProjectId }: Props): 
   useEffect(load, [load])
 
   const project = projects.find((p) => p.id === selected) ?? null
-
-  useEffect(() => {
-    if (focusProjectId != null) setSelected(focusProjectId)
-  }, [focusProjectId])
 
   useEffect(() => {
     setDraft(project ? draftOf(project) : null)

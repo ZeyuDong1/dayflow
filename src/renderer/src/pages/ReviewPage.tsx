@@ -17,7 +17,7 @@ interface DraftState {
   projectId: number | null
 }
 
-export default function ReviewPage(): React.ReactElement {
+export default function ReviewPage({ focusProjectId }: { focusProjectId?: number | null }): React.ReactElement {
   const [groups, setGroups] = useState<RuleSuggestionItem[]>([])
   const [projects, setProjects] = useState<Project[]>([])
   const [rules, setRules] = useState<Rule[]>([])
@@ -33,6 +33,19 @@ export default function ReviewPage(): React.ReactElement {
   }, [])
 
   useEffect(load, [load])
+
+  // 从类型树点击跳入:为该类别预开一条整理规则草稿(补上关键词即可创建)
+  useEffect(() => {
+    if (focusProjectId == null) return
+    const proj = projects.find((p) => p.id === focusProjectId)
+    if (!proj) return
+    setDraft({
+      tree: { kind: 'all', children: [{ kind: 'cond', field: 'app', op: 'contains', value: '' }] },
+      projectId: focusProjectId,
+    })
+    setStatus(`正在为「${proj.title}」整理——填入关键词后创建规则`)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusProjectId, projects.length])
 
   const startRule = (g: RuleSuggestionItem | null): void => {
     setDraft({
