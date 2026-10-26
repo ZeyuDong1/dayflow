@@ -12,13 +12,13 @@ interface AiCard {
   status: string
   detail?: string
   link?: string
+  ts: number
 }
 
 interface GpuLite {
   id: number
   name: string
   activeTaskId: number | null
-  last_active_at: string | null
 }
 
 const TYPE_LABEL: Record<string, string> = {
@@ -32,6 +32,15 @@ const TYPE_LABEL: Record<string, string> = {
   SUSPEND: 'SUSPEND 挂起',
 }
 
+const PICKER_PRESETS: [number, string][] = [
+  [5, '5m'],
+  [15, '15m'],
+  [25, '25m'],
+  [45, '45m'],
+  [60, '1h'],
+  [120, '2h'],
+]
+
 function parseSimpleTime(input: string): number | null {
   const match = input.trim().match(/^(\d+)\s*([smh]?)$/i)
   if (!match) return null
@@ -40,6 +49,32 @@ function parseSimpleTime(input: string): number | null {
   if (unit === 'h') return value * 3600
   if (unit === 's') return value
   return value * 60
+}
+
+function relativeTime(ts: number, now: number): string {
+  const diff = Math.max(0, now - ts)
+  if (diff < 60_000) return '刚刚'
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m`
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h`
+  return `${Math.floor(diff / 86_400_000)}d`
+}
+
+/** 标题里的 URL 渲染为可点击分段（http(s) 起、空白/CJK 标点终止） */
+function linkifySegments(title: string): { text: string; url?: string }[] {
+  const out: { text: string; url?: string }[] = []
+  const re = /https?:\/\/[^\s"'）】」»]+/g
+  let last = 0
+  for (const m of title.matchAll(re)) {
+    const idx = m.index ?? 0
+    if (idx > last) out.push({ text: title.slice(last, idx) })
+    let url = m[0]
+    while (/[)\].,!?;:]$/.test(url)) url = url.slice(0, -1) // 剥尾部标点
+    if (url.length > 8) out.push({ text: url, url })
+    else out.push({ text: m[0] })
+    last = idx + m[0].length
+  }
+  if (last < title.length) out.push({ text: title.slice(last) })
+  return out
 }
 
 export default function SpotlightWindow() {
@@ -58,11 +93,15 @@ export default function SpotlightWindow() {
   const [pickingProject, setPickingProject] = useState(false)
   const [resetFor, setResetFor] = useState<TaskRow | null>(null)
   const [resetValue, setResetValue] = useState('')
+  const [pickerFor, setPickerFor] = useState<TaskRow | null>(null)
+  const [pickerCustom, setPickerCustom] = useState('')
+  const [contextFor, setContextFor] = useState<{ task: TaskRow; x: number; y: number } | null>(null)
   const [cursorId, setCursorId] = useState<number | null>(null)
   const [focusToday, setFocusToday] = useState(0)
   const [now, setNow] = useState(Date.now())
   const [showReady, setShowReady] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  const rootRef = useRef<HTMLDivElement>(null)
 
   const refresh = useCallback(() => {
     void window.dayflow.todo.getTasks().then(setTasks)
@@ -88,15 +127,18 @@ export default function SpotlightWindow() {
         if (e.type === 'ai:reminder' && e.reminder) {
           const r = e.reminder
           setCards((c) =>
-            [{ id: r.id, source: r.source, title: r.title, status: r.status, detail: r.detail, link: r.link }, ...c].slice(0, 20),
+            [
+              { id: r.id, source: r.source, title: r.title, status: r.status, detail: r.detail, link: r.link, ts: Date.now() },
+              ...c,
+            ].slice(0, 20),
           )
         }
         if (e.type === 'ai:reminder-dismissed') {
           setCards((c) =>
             c.filter((card) => {
+              if (e.id != null) return card.id !== e.id // 单卡删
               if (e.source != null && card.source !== e.source) return true
               if (e.title != null && card.title !== e.title) return true
-              // 同回复：force 全清；否则保留 needs_input/review 行动卡
               return e.force === true ? false : card.status === 'needs_input' || card.status === 'review'
             }),
           )
@@ -108,7 +150,7 @@ export default function SpotlightWindow() {
   const parsed: ParsedCommand = useMemo(() => parseCommand(input), [input])
   const priorities = useMemo(() => computeBangPriorities(tasks), [tasks])
 
-  // 建议列表（语义规格 §4.2）
+  // 建议列表（语义规格 §4.2：过滤 reminder/training；bang 稳定排序；空输入=next_action 前 10）
   const suggestions: TaskRow[] = useMemo(() => {
     const nonSpecial = tasks.filter((t) => t.status !== 'archived' && t.type !== 'reminder' && t.type !== 'training')
     const byCreatedDesc = [...nonSpecial].sort((a, b) => b.created_at.localeCompare(a.created_at))
@@ -140,7 +182,6 @@ export default function SpotlightWindow() {
     )
   }, [input, parsed, tasks, projects, priorities])
 
-  // 任务树（隐藏 training 任务）
   const tree: TaskNode<TaskRow>[] = useMemo(
     () => buildTaskTree(tasks.filter((t) => t.type !== 'training'), priorities),
     [tasks, priorities],
@@ -164,10 +205,7 @@ export default function SpotlightWindow() {
       null,
     [tasks],
   )
-  const waitingRows = useMemo(
-    () => tasks.filter((t) => t.type === 'standard' && t.status === 'waiting'),
-    [tasks],
-  )
+  const waitingRows = useMemo(() => tasks.filter((t) => t.type === 'standard' && t.status === 'waiting'), [tasks])
   const trainingChips = useMemo(
     () =>
       tasks
@@ -212,7 +250,6 @@ export default function SpotlightWindow() {
     [activeTask, highlightIdx, suggestions, refresh],
   )
 
-  // 完成确认（# 模式）
   const requestComplete = useCallback((task: TaskRow) => {
     if (task.type === 'standard' && task.project_id == null) {
       setConfirmTask(task)
@@ -235,7 +272,85 @@ export default function SpotlightWindow() {
     [confirmTask, refresh],
   )
 
+  // 结构编辑：Tab 缩进（前一兄弟的子级）；Shift+Tab 反缩进（祖父下、插父的下一兄弟前、sort_order 取中点）
+  const indent = (t: TaskRow, prevSibling: TaskRow | undefined) => {
+    if (!prevSibling) return
+    void window.dayflow.todo.updateTask(t.id, { parent_id: prevSibling.id }).then(refresh)
+  }
+  const outdent = (t: TaskRow) => {
+    const parent = tasks.find((x) => x.id === t.parent_id)
+    const grandparent = parent?.parent_id ?? null
+    let sortOrder = t.sort_order
+    if (parent) {
+      // 插到父的下一个兄弟之前 → sort_order 取中点
+      const uncles = tasks.filter((x) => x.parent_id === parent.parent_id && x.id !== parent.id)
+      const nextUncle = uncles.filter((u) => u.sort_order > parent.sort_order).sort((a, b) => a.sort_order - b.sort_order)[0]
+      sortOrder = nextUncle ? Math.round((parent.sort_order + nextUncle.sort_order) / 2) : parent.sort_order + 1
+    }
+    void window.dayflow.todo.updateTask(t.id, { parent_id: grandparent, sort_order: sortOrder }).then(refresh)
+  }
+
+  const onTreeKeyDown = (e: React.KeyboardEvent, node: TaskNode<TaskRow>) => {
+    const t = node.task
+    const siblings = flatRows.filter((r) => r.task.parent_id === t.parent_id)
+    const sibIdx = siblings.findIndex((r) => r.task.id === t.id)
+    if (e.key === 'Tab') {
+      e.preventDefault()
+      if (e.shiftKey) {
+        outdent(t) // 根任务 Shift+Tab 且空标题 = 删除
+        if (!t.title.trim() && t.parent_id == null) void window.dayflow.todo.deleteTask(t.id).then(refresh)
+      } else if (sibIdx > 0) {
+        indent(t, siblings[sibIdx - 1].task)
+      }
+    } else if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && editingId == null) {
+      e.preventDefault()
+      void window.dayflow.todo.createTask('', { parentId: t.id, skipDedup: true }).then((row) => {
+        setEditingId(row.id)
+        setEditValue('')
+        refresh()
+      })
+    } else if (e.key === 'Enter' && e.shiftKey && !e.ctrlKey) {
+      e.preventDefault()
+      void window.dayflow.todo.createTask('', { parentId: t.parent_id, skipDedup: true }).then((row) => {
+        setEditingId(row.id)
+        setEditValue('')
+        refresh()
+      })
+    } else if (e.ctrlKey && e.key === 'Enter') {
+      e.preventDefault()
+      window.dayflow.todo.completeTask(t.id)
+      refresh()
+    } else if (e.ctrlKey && e.key === 'Backspace') {
+      e.preventDefault()
+      void window.dayflow.todo.deleteTask(t.id).then(refresh)
+    } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault()
+      const idx = flatRows.findIndex((r) => r.task.id === t.id)
+      const next = flatRows[idx + (e.key === 'ArrowDown' ? 1 : -1)]
+      if (next) {
+        setCursorId(next.task.id)
+        const el = document.querySelector<HTMLElement>(`[data-row-id="${next.task.id}"] input`)
+        el?.focus()
+      }
+    }
+  }
+
+  const commitEdit = (id: number) => {
+    void window.dayflow.todo.updateTask(id, { title: editValue }).then(() => {
+      setEditingId(null)
+      refresh()
+    })
+  }
+
   const onKeyDown = (e: React.KeyboardEvent) => {
+    if (pickerFor) {
+      if (e.key === 'Escape') setPickerFor(null)
+      return
+    }
+    if (contextFor) {
+      if (e.key === 'Escape') setContextFor(null)
+      return
+    }
     if (gpuPick) {
       if (e.key === 'Escape') {
         setGpuPick(null)
@@ -304,64 +419,24 @@ export default function SpotlightWindow() {
     }
   }
 
-  // 任务树键盘（Bullet 编辑器语义）
-  const onTreeKeyDown = (e: React.KeyboardEvent, node: TaskNode<TaskRow>) => {
-    const t = node.task
-    const siblings = flatRows.filter((r) => r.task.parent_id === t.parent_id)
-    const sibIdx = siblings.findIndex((r) => r.task.id === t.id)
-    if (e.key === 'Tab') {
-      e.preventDefault()
-      if (e.shiftKey) {
-        // 反缩进：挂到祖父下
-        const parent = tasks.find((x) => x.id === t.parent_id)
-        void window.dayflow.todo.updateTask(t.id, { parent_id: parent?.parent_id ?? null }).then(refresh)
-      } else if (sibIdx > 0) {
-        // 缩进：变前一兄弟的子级
-        void window.dayflow.todo.updateTask(t.id, { parent_id: siblings[sibIdx - 1].task.id }).then(refresh)
-      }
-    } else if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && editingId == null) {
-      e.preventDefault()
-      // 新建子任务（空白草稿）
-      void window.dayflow.todo.createTask('', { parentId: t.id, skipDedup: true }).then((row) => {
-        setEditingId(row.id)
-        setEditValue('')
-        refresh()
-      })
-    } else if (e.key === 'Enter' && e.shiftKey) {
-      e.preventDefault()
-      void window.dayflow.todo.createTask('', { parentId: t.parent_id, skipDedup: true }).then((row) => {
-        setEditingId(row.id)
-        setEditValue('')
-        refresh()
-      })
-    } else if (e.ctrlKey && e.key === 'Enter') {
-      e.preventDefault()
-      window.dayflow.todo.completeTask(t.id)
-      refresh()
-    } else if (e.ctrlKey && e.key === 'Backspace') {
-      e.preventDefault()
-      void window.dayflow.todo.deleteTask(t.id).then(refresh)
-    } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-      e.preventDefault()
-      const idx = flatRows.findIndex((r) => r.task.id === t.id)
-      const next = flatRows[idx + (e.key === 'ArrowDown' ? 1 : -1)]
-      if (next) {
-        setCursorId(next.task.id)
-        const el = document.querySelector<HTMLElement>(`[data-row-id="${next.task.id}"] input`)
-        el?.focus()
-      }
+  // 点外关闭倒计时面板/右键菜单
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      if (pickerFor && !(e.target as HTMLElement).closest('.sw-picker')) setPickerFor(null)
+      if (contextFor && !(e.target as HTMLElement).closest('.sw-ctx')) setContextFor(null)
     }
-  }
+    window.addEventListener('mousedown', onDown)
+    return () => window.removeEventListener('mousedown', onDown)
+  }, [pickerFor, contextFor])
 
-  const commitEdit = (id: number) => {
-    void window.dayflow.todo.updateTask(id, { title: editValue }).then(() => {
-      setEditingId(null)
-      refresh()
-    })
+  const openContextMenu = (e: React.MouseEvent, task: TaskRow) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setContextFor({ task, x: e.clientX, y: e.clientY })
   }
 
   return (
-    <div className="sw-root" onKeyDown={onKeyDown}>
+    <div className="sw-root" ref={rootRef} onKeyDown={onKeyDown}>
       <div className="sw-inputbar">
         <span className="sw-search">🔍</span>
         <input
@@ -399,11 +474,7 @@ export default function SpotlightWindow() {
           </div>
           {pickingProject &&
             projects.map((p, i) => (
-              <button
-                key={p.id}
-                className="sw-project-item"
-                onClick={() => doComplete(p.id)}
-              >
+              <button key={p.id} className="sw-project-item" onClick={() => doComplete(p.id)}>
                 {p.name} <span className="sw-dim">^{i + 1}</span>
               </button>
             ))}
@@ -433,7 +504,7 @@ export default function SpotlightWindow() {
                 <span className="sw-timer">{getTimerDisplay(activeTask, now)}</span>
               </div>
               {waitingRows.map((w) => (
-                <div key={w.id} className="sw-wait-row" onClick={() => window.dayflow.todo.startFocus(w.id)}>
+                <div key={w.id} className="sw-wait-row" onClick={() => window.dayflow.todo.startFocus(w.id)} onContextMenu={(e) => openContextMenu(e, w)}>
                   <span>⏱ {w.title}</span>
                   <span className="sw-dim">{getTimerDisplay(w, now)}</span>
                 </div>
@@ -447,8 +518,9 @@ export default function SpotlightWindow() {
                 <span
                   key={t.id}
                   className="sw-train-chip"
-                  title="单击取消倒计时"
+                  title="单击取消倒计时 · 右键更多"
                   onClick={() => window.dayflow.todo.cancelWait(t.id)}
+                  onContextMenu={(e) => openContextMenu(e, t)}
                 >
                   {t.title} · {getTimerDisplay(t, now)}
                 </span>
@@ -494,18 +566,25 @@ export default function SpotlightWindow() {
           {cards.length > 0 && (
             <div className="sw-cards">
               {cards.map((c) => (
-                <div key={c.id} className="sw-card">
+                <div
+                  key={c.id}
+                  className="sw-card"
+                  onClick={() => c.link && window.dayflow.todo.openExternal(c.link)}
+                  style={{ cursor: c.link ? 'pointer' : 'default' }}
+                >
                   <span className={`sw-pill st-${c.status}`}>
                     {c.status === 'success' ? '✓' : c.status === 'failure' ? '✕' : c.status === 'needs_input' ? '!' : c.status === 'review' ? '?' : c.status === 'progress' ? '⋯' : 'i'}
                   </span>
                   <span className="sw-card-text">
                     {c.source} · {c.title}
                   </span>
+                  <span className="sw-dim">{relativeTime(c.ts, now)}</span>
                   <span className="sw-actions">
                     <button
                       className="sw-btn ghost"
                       title="转为软提醒"
-                      onClick={() => {
+                      onClick={(e) => {
+                        e.stopPropagation()
                         void window.dayflow.todo.aiPromote(c.source, c.title, c.detail, c.link)
                         window.dayflow.todo.aiDismiss({ source: c.source, title: c.title })
                         setCards((cs) => cs.filter((x) => x.id !== c.id))
@@ -517,7 +596,8 @@ export default function SpotlightWindow() {
                     <button
                       className="sw-btn ghost"
                       title="忽略"
-                      onClick={() => {
+                      onClick={(e) => {
+                        e.stopPropagation()
                         window.dayflow.todo.aiDismiss({ id: c.id })
                         setCards((cs) => cs.filter((x) => x.id !== c.id))
                       }}
@@ -534,6 +614,7 @@ export default function SpotlightWindow() {
             {flatRows.map((node) => {
               const t = node.task
               const isCursor = cursorId === t.id
+              const hasTimer = t.status === 'waiting' || t.target_timestamp != null
               return (
                 <div
                   key={t.id}
@@ -542,6 +623,7 @@ export default function SpotlightWindow() {
                   style={{ paddingLeft: 8 + node.depth * 18 }}
                   onKeyDown={(e) => onTreeKeyDown(e, node)}
                   onClick={() => setCursorId(t.id)}
+                  onContextMenu={(e) => openContextMenu(e, t)}
                 >
                   <span
                     className="sw-fold"
@@ -557,13 +639,16 @@ export default function SpotlightWindow() {
                   >
                     {node.children.length > 0 ? (collapsed.has(t.id) ? '▸' : '▾') : '·'}
                   </span>
-                  <button className="sw-icon" title="设为 Focus" onClick={() => window.dayflow.todo.startFocus(t.id)}>
+                  <button className="sw-icon" title="设为 Focus" onClick={(e) => { e.stopPropagation(); window.dayflow.todo.startFocus(t.id) }}>
                     ▶
                   </button>
                   <button
-                    className="sw-icon"
+                    className={`sw-icon ${t.is_side_focus === 1 ? 'amber' : ''}`}
                     title="设为副 Focus"
-                    onClick={() => void window.dayflow.todo.setSideFocus(t.id, t.is_side_focus !== 1).then(refresh)}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      void window.dayflow.todo.setSideFocus(t.id, t.is_side_focus !== 1).then(refresh)
+                    }}
                   >
                     {t.is_side_focus === 1 ? '◎' : '○'}
                   </button>
@@ -573,17 +658,21 @@ export default function SpotlightWindow() {
                       autoFocus
                       value={editValue}
                       onChange={(e) => setEditValue(e.target.value)}
-                      onBlur={() => commitEdit(t.id)}
+                      onBlur={() => editValue.trim() && commitEdit(t.id)}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') {
                           e.preventDefault()
                           commitEdit(t.id)
                         } else if (e.key === 'Backspace' && editValue === '') {
                           e.preventDefault()
-                          void window.dayflow.todo.deleteTask(t.id).then(() => {
-                            setEditingId(null)
-                            refresh()
-                          })
+                          if (t.parent_id != null) {
+                            outdent(t) // 空标题 Backspace = 反缩进
+                          } else {
+                            void window.dayflow.todo.deleteTask(t.id).then(() => {
+                              setEditingId(null)
+                              refresh()
+                            })
+                          }
                         }
                       }}
                     />
@@ -599,30 +688,92 @@ export default function SpotlightWindow() {
                       {t.title || '（草稿）'}
                     </span>
                   )}
-                  {t.status === 'waiting' && <span className="sw-dim">⏳</span>}
+                  {t.status === 'waiting' && <span className="sw-dim" title="倒计时中">⏳</span>}
+                  {t.total_duration > 0 && <span className="sw-dim">{Math.round(t.total_duration / 60)}m</span>}
                   <span className="sw-row-ops">
                     <button
-                      className="sw-icon"
+                      className={`sw-icon ${hasTimer ? 'amber' : ''}`}
                       title="倒计时"
-                      onClick={() => {
-                        const secs = 25 * 60
-                        window.dayflow.todo.startWait(t.id, secs)
-                        refresh()
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setPickerFor(t)
+                        setPickerCustom('')
                       }}
                     >
                       ⏱
                     </button>
-                    <button className="sw-icon" title="完成" onClick={() => window.dayflow.todo.completeTask(t.id)}>
+                    <button className="sw-icon" title="完成" onClick={(e) => { e.stopPropagation(); window.dayflow.todo.completeTask(t.id) }}>
                       ✓
                     </button>
                     <button
                       className="sw-icon"
                       title="删除"
-                      onClick={() => void window.dayflow.todo.deleteTask(t.id).then(refresh)}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        void window.dayflow.todo.deleteTask(t.id).then(refresh)
+                      }}
                     >
                       🗑
                     </button>
                   </span>
+                  {pickerFor?.id === t.id && (
+                    <div className="sw-picker" onClick={(e) => e.stopPropagation()}>
+                      {hasTimer && <div className="sw-picker-remain">剩余 {getTimerDisplay(t, now)}</div>}
+                      <div className="sw-picker-grid">
+                        {PICKER_PRESETS.map(([m, label]) => (
+                          <button
+                            key={m}
+                            className="sw-btn"
+                            onClick={() => {
+                              window.dayflow.todo.startWait(t.id, m * 60)
+                              setPickerFor(null)
+                              refresh()
+                            }}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="sw-picker-custom">
+                        <input
+                          placeholder="分钟"
+                          value={pickerCustom}
+                          onChange={(e) => setPickerCustom(e.target.value.replace(/\D/g, ''))}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && pickerCustom) {
+                              window.dayflow.todo.startWait(t.id, parseInt(pickerCustom, 10) * 60)
+                              setPickerFor(null)
+                              refresh()
+                            }
+                          }}
+                        />
+                        <button
+                          className="sw-btn"
+                          onClick={() => {
+                            if (pickerCustom) {
+                              window.dayflow.todo.startWait(t.id, parseInt(pickerCustom, 10) * 60)
+                              setPickerFor(null)
+                              refresh()
+                            }
+                          }}
+                        >
+                          ✓
+                        </button>
+                        {hasTimer && (
+                          <button
+                            className="sw-btn danger"
+                            onClick={() => {
+                              window.dayflow.todo.cancelWait(t.id)
+                              setPickerFor(null)
+                              refresh()
+                            }}
+                          >
+                            取消倒计时
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )
             })}
@@ -646,6 +797,7 @@ export default function SpotlightWindow() {
                     </span>
                     <span>{s.title}</span>
                     {s.tag && <span className="sw-dim">#{s.tag}</span>}
+                    {s.total_duration > 0 && <span className="sw-dim">{Math.round(s.total_duration / 60)}m</span>}
                     <span className="sw-dim">^{i + 1}</span>
                   </div>
                 ))}
@@ -664,27 +816,31 @@ export default function SpotlightWindow() {
                   Tasks Ready ({readyList.length})
                 </button>
               )}
-              {showReady &&
-                readyList.map((t) => (
-                  <div key={t.id} className="sw-wait-row">
-                    <span>{t.title}</span>
-                    <span className="sw-actions">
-                      <button
-                        className="sw-btn"
-                        onClick={() => {
-                          if (t.type !== 'training') void window.dayflow.todo.updateTask(t.id, { status: 'archived' })
-                          window.dayflow.todo.cancelWait(t.id)
-                          refresh()
-                        }}
-                      >
-                        Done
-                      </button>
-                      <button className="sw-btn ghost" onClick={() => setShowReady(false)}>
-                        Skip
-                      </button>
-                    </span>
-                  </div>
-                ))}
+              {showReady && (
+                <>
+                  <div className="sw-section-title">倒计时已到期 · 处理或跳过</div>
+                  {readyList.map((t) => (
+                    <div key={t.id} className="sw-wait-row">
+                      <span>{t.title}</span>
+                      <span className="sw-actions">
+                        <button
+                          className="sw-btn"
+                          onClick={() => {
+                            if (t.type !== 'training') void window.dayflow.todo.updateTask(t.id, { status: 'archived' })
+                            window.dayflow.todo.cancelWait(t.id)
+                            refresh()
+                          }}
+                        >
+                          Done
+                        </button>
+                        <button className="sw-btn ghost" onClick={() => setShowReady(false)}>
+                          Skip
+                        </button>
+                      </span>
+                    </div>
+                  ))}
+                </>
+              )}
             </div>
           )}
         </>
@@ -725,6 +881,38 @@ export default function SpotlightWindow() {
               }}
             />
           </div>
+        </div>
+      )}
+
+      {contextFor && (
+        <div className="sw-ctx" style={{ left: contextFor.x, top: contextFor.y }} onClick={() => setContextFor(null)}>
+          {contextFor.task.target_timestamp != null && (
+            <>
+              <button className="sw-ctx-item" onClick={() => { setResetFor(contextFor.task); setContextFor(null) }}>
+                重新设定倒计时
+              </button>
+              <button
+                className="sw-ctx-item"
+                onClick={() => {
+                  window.dayflow.todo.cancelWait(contextFor.task.id)
+                  setContextFor(null)
+                  refresh()
+                }}
+              >
+                取消倒计时
+              </button>
+            </>
+          )}
+          <button
+            className="sw-ctx-item"
+            onClick={() => {
+              window.dayflow.todo.completeTask(contextFor.task.id)
+              setContextFor(null)
+              refresh()
+            }}
+          >
+            完成任务
+          </button>
         </div>
       )}
 

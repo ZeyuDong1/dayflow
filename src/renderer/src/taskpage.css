@@ -810,3 +810,31 @@
   padding-top: 12px;
   border-top: 1px dashed var(--border);
 }
+
+/* 焦点卡斜纹进度条（§十三 Current Focus 顶部 2px 动画） */
+.tp-stripe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--accent) 0 6px,
+    var(--accent-soft) 6px 12px
+  );
+  background-size: 24px 2px;
+  animation: tp-stripe-move 1.2s linear infinite;
+  border-radius: 2px 2px 0 0;
+}
+@keyframes tp-stripe-move {
+  from { background-position: 0 0; }
+  to { background-position: 17px 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tp-stripe { animation: none !important; }
+}
+
+/* 队列行拖拽态 */
+.tp-q-row[draggable='true'] { cursor: grab; }
+.tp-q-row:active { cursor: grabbing; }

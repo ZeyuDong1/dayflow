@@ -24,6 +24,17 @@ interface AiCardLite {
   status: string
 }
 
+interface TrainingRec {
+  taskId: number
+  gpuName: string
+  modelName?: string
+  metrics?: Record<string, unknown>
+  lastUpdated: number
+  stalled: boolean
+  source: string
+  wandbUrl?: string
+}
+
 function bangCount(title: string): number {
   let n = 0
   for (const ch of title) if (ch === '!') n++
@@ -41,10 +52,16 @@ export default function OverlayWindow() {
   const [cards, setCards] = useState<AiCardLite[]>([])
   const [now, setNow] = useState(Date.now())
   const [settings, setSettings] = useState<OverlaySettingsShape | null>(null)
+  const [tsMap, setTsMap] = useState<Record<number, TrainingRec>>({})
   const titleRef = useRef<HTMLSpanElement>(null)
 
   const refresh = useCallback(() => {
     void window.dayflow.todo.getTasks().then(setTasks)
+    void window.dayflow.todo.trainingStatus().then((rows) => {
+      const map: Record<number, TrainingRec> = {}
+      for (const r of rows as TrainingRec[]) map[r.taskId] = r
+      setTsMap(map)
+    })
   }, [])
 
   useEffect(() => {
@@ -74,7 +91,7 @@ export default function OverlayWindow() {
   useEffect(
     () =>
       window.dayflow.todo.onEvent((e: TodoEvent) => {
-        if (e.type === 'fetch-tasks' || e.type === 'timer:update') refresh()
+        if (e.type === 'fetch-tasks' || e.type === 'timer:update' || e.type === 'timer:training-update') refresh()
         if (e.type === 'ai:reminder' && e.reminder) {
           const r = e.reminder
           setCards((c) => [{ id: r.id, source: r.source, title: r.title, status: r.status }, ...c].slice(0, 2))
@@ -158,17 +175,27 @@ export default function OverlayWindow() {
       tasks
         .filter((t) => t.type === 'training' && t.status !== 'archived')
         .map((t) => {
-          const etaH = Number((t.context_memo ?? '').match(/eta_hours"?[:\s]+([\d.]+)/)?.[1] ?? NaN)
-          const etaTs = Number.isFinite(etaH) ? now + etaH * 3600_000 : Number.POSITIVE_INFINITY
-          return { t, etaTs }
+          const rec = tsMap[t.id]
+          const etaH = Number(rec?.metrics?.['eta_hours'] ?? rec?.metrics?.['train/eta_hours'] ?? NaN)
+          const endTs = Number.isFinite(etaH) ? rec.lastUpdated + etaH * 3_600_000 : Number.POSITIVE_INFINITY
+          const cfg =
+            (typeof rec?.metrics?.['cfgname'] === 'string' && (rec.metrics['cfgname'] as string)) ||
+            rec?.modelName ||
+            t.title
+          return { t, cfg, endTs }
         })
-        .sort((a, b) => a.etaTs - b.etaTs)
+        .sort((a, b) => a.endTs - b.endTs)
         .slice(0, 3),
-    [tasks, now],
+    [tasks, tsMap],
   )
 
   const ancestors = focusTask ? getAncestorChain(tasks, focusTask.id) : []
-  const crumb = ancestors.map((a) => a.title).join(' / ')
+  const fontSize = settings?.fontSize ?? 14
+  const est = (s: string) => s.length * fontSize * 0.9
+  const fitCount = focusTask
+    ? fitBreadcrumbLevels(est(focusTask.title), ancestors.map((a) => est(a.title)), fontSize, 260)
+    : 0
+  const crumb = ancestors.slice(ancestors.length - fitCount).map((a) => a.title).join(' / ')
 
   const glowVars = settings
     ? ({
@@ -178,6 +205,7 @@ export default function OverlayWindow() {
         opacity: settings.opacity / 100,
         fontSize: `${settings.fontSize}px`,
         color: settings.color,
+        WebkitAppRegion: settings.mouseIgnore ? 'none' : 'drag',
       } as React.CSSProperties)
     : {}
 
@@ -253,11 +281,11 @@ export default function OverlayWindow() {
         </div>
       ))}
 
-      {training.map(({ t, etaTs }) => (
+      {training.map(({ t, cfg, endTs }) => (
         <div key={t.id} className="ow-row ow-train">
           <span className="ow-icon">📈</span>
-          <span className="ow-title">{t.title}</span>
-          <span className="ow-timer">{Number.isFinite(etaTs) ? `结束 ${fmtEnd(etaTs)}` : getTimerDisplay(t, now)}</span>
+          <span className="ow-title">{cfg}</span>
+          <span className="ow-timer">{Number.isFinite(endTs) ? `结束 ${fmtEnd(endTs)}` : getTimerDisplay(t, now)}</span>
         </div>
       ))}
 

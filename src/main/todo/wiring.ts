@@ -3,7 +3,7 @@
  * 广播 'todo:event' 发往除 Reminder 窗外的所有窗口；Reminder 窗走专属队列，
  * 软提醒（type==='reminder'）不弹窗。
  */
-import { app, BrowserWindow, Dialog, Notification, ipcMain, dialog } from 'electron'
+import { app, BrowserWindow, Dialog, Notification, ipcMain, dialog, shell } from 'electron'
 import { db } from '../db'
 import { TaskService } from './service'
 import { GpuService } from './gpu-service'
@@ -164,6 +164,11 @@ export function createTodoRuntime(opts: { port?: number } = {}): TodoRuntime {
       return next
     },
     wandbUpdate: () => wandbBridge.update(),
+    openExternal: (url: string) => {
+      if (/^https?:\/\//.test(url)) void shell.openExternal(url)
+    },
+    trainingStatusSnapshot: () => [...timerManager.trainingStatus.values()],
+    broadcastAiDismissed: (payload) => broadcast({ type: 'ai:reminder-dismissed', ...payload, force: false, dismissed: 0 }),
     wandbTest: (entity: string, apiKey: string) => wandbBridge.testConnection(entity, apiKey),
     hideReminder: () => hideReminderWindow(),
     hideSpotlight: () => hideSpotlight(),

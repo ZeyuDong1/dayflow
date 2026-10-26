@@ -88,6 +88,30 @@ export default function TaskPage(): React.ReactElement {
   const [reRemindFor, setReRemindFor] = useState<number | null>(null)
   const [countdownFor, setCountdownFor] = useState<number | null>(null)
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null)
+  const [dragTaskId, setDragTaskId] = useState<number | null>(null)
+
+  /** 拖拽环检测：target 是否在 dragged 的子树里（禁止把父拖进自己的后代） */
+  const isDescendant = useCallback(
+    (ancestorId: number, maybeChildId: number): boolean => {
+      const childrenOf = new Map<number, number[]>()
+      for (const t of tasks) {
+        if (t.parent_id != null) {
+          const list = childrenOf.get(t.parent_id)
+          if (list) list.push(t.id)
+          else childrenOf.set(t.parent_id, [t.id])
+        }
+      }
+      const stack = [ancestorId]
+      while (stack.length > 0) {
+        const cur = stack.pop()!
+        if (cur === maybeChildId) return true
+        for (const c of childrenOf.get(cur) ?? []) stack.push(c)
+      }
+      return false
+    },
+    [tasks]
+  )
+
   const [addingGpu, setAddingGpu] = useState(false)
   const [gpuName, setGpuName] = useState('')
   const [gpuAssign, setGpuAssign] = useState<Record<number, { taskId: number | ''; minutes: number }>>({})
@@ -108,6 +132,16 @@ export default function TaskPage(): React.ReactElement {
     void window.dayflow.todo.getGpus().then((gs) => setGpus(gs as GpuCard[]))
     void window.dayflow.todo.focusToday().then(setFocusToday)
   }, [])
+
+  /** 拖到项目组：置根并归入该项目（§十三 Dashboard 队列拖拽语义） */
+  const dropOnProjectGroup = useCallback(
+    (droppedId: number, projectId: number | null) => {
+      if (droppedId == null) return
+      void window.dayflow.todo.updateTask(droppedId, { parent_id: null, project_id: projectId }).then(refresh)
+      setDragTaskId(null)
+    },
+    [refresh]
+  )
 
   const refreshProjects = useCallback(() => {
     void window.dayflow.todo.listTaskProjects().then(setProjects)
@@ -488,7 +522,32 @@ export default function TaskPage(): React.ReactElement {
     const bangs = countBangs(t.title)
     return (
       <React.Fragment key={t.id}>
-        <div className="tp-q-row" style={{ marginLeft: depth * 20 }}>
+        <div
+          className="tp-q-row"
+          style={{ marginLeft: depth * 20 }}
+          draggable
+          onDragStart={(e) => {
+            e.dataTransfer.setData('text/task-id', String(t.id))
+            e.dataTransfer.effectAllowed = 'move'
+          }}
+          onDragOver={(e) => {
+            if (dragTaskId != null && dragTaskId !== t.id && !isDescendant(dragTaskId, t.id)) {
+              e.preventDefault()
+              e.dataTransfer.dropEffect = 'move'
+            }
+          }}
+          onDrop={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            const droppedId = dragTaskId
+            setDragTaskId(null)
+            if (droppedId == null || droppedId === t.id || isDescendant(droppedId, t.id)) return
+            const dropped = tasks.find((x) => x.id === droppedId)
+            void window.dayflow.todo
+              .updateTask(droppedId, { parent_id: t.id, project_id: dropped?.project_id ?? t.project_id })
+              .then(refresh)
+          }}
+        >
           <span className="tp-q-title" title={t.title}>
             {t.title || '（无标题）'}
           </span>
@@ -562,6 +621,7 @@ export default function TaskPage(): React.ReactElement {
       <div className="tp-main">
         {/* 1. Current Focus 大卡 */}
         <div className="tp-focus-card">
+          {activeTask && <div className="tp-stripe" aria-hidden />}
           {activeTask ? (
             <>
               <div className="tp-focus-head">
@@ -690,7 +750,21 @@ export default function TaskPage(): React.ReactElement {
             <div className="tp-empty">暂无 Next Action</div>
           ) : (
             queueGroups.map((g) => (
-              <div key={g.projectId ?? 'inbox'} className="tp-q-group">
+              <div
+                key={g.projectId ?? 'inbox'}
+                className="tp-q-group"
+                onDragOver={(e) => {
+                  if (dragTaskId != null) {
+                    e.preventDefault()
+                    e.dataTransfer.dropEffect = 'move'
+                  }
+                }}
+                onDrop={(e) => {
+                  e.preventDefault()
+                  const droppedId = dragTaskId ?? (Number(e.dataTransfer.getData('text/task-id')) || null)
+                  if (droppedId != null) dropOnProjectGroup(droppedId, g.projectId)
+                }}
+              >
                 <div className="tp-q-head">
                   <span className="tp-q-head-name">
                     <span className="tp-dot" style={{ background: g.color ?? NEUTRAL_COLOR }} />

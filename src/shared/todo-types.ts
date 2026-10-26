@@ -87,6 +87,7 @@ export interface TodoEvent {
   }
   source?: string
   title?: string
+  id?: string
   force?: boolean
   dismissed?: number
   status?: unknown

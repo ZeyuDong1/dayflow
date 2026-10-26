@@ -328,6 +328,10 @@ const api = {
       apiKey: string,
     ): Promise<{ valid: boolean; projectCount: number; hostname: string; error?: string }> =>
       ipcRenderer.invoke('wandb:test', entity, apiKey),
+    openExternal: (url: string): void => {
+      ipcRenderer.invoke('todo:open-external', url)
+    },
+    trainingStatus: (): Promise<unknown[]> => ipcRenderer.invoke('todo:training-status'),
     mdSync: {
       selectFolder: (): Promise<string | null> => ipcRenderer.invoke('md-sync:select-folder'),
       setConfig: (enabled: boolean, folder: string): Promise<void> =>

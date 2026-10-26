@@ -38,6 +38,9 @@ export interface TodoIpcDeps {
   analyzeDay?: (day: string) => Promise<number>
   wandbUpdate?: () => void
   wandbTest?: (entity: string, apiKey: string) => Promise<{ valid: boolean; projectCount: number; hostname: string; error?: string }>
+  openExternal?: (url: string) => void
+  trainingStatusSnapshot?: () => unknown[]
+  broadcastAiDismissed?: (payload: { id?: string; source?: string; title?: string }) => void
   mdSync?: {
     selectFolder(): Promise<string | null>
     setConfig(enabled: boolean, folder: string): Promise<void>
@@ -136,11 +139,16 @@ export function registerTodoIpc(reg: IpcRegistry, deps: TodoIpcDeps): void {
   // AI 域
   reg.handle('todo:ai-promote', ((_e: never, source: string, title: string, detail?: string, link?: string) =>
     ai.promote(source, title, detail, link)) as never)
-  reg.on('todo:ai-dismiss', ((_e: never, payload: { source?: string; title?: string; force?: boolean }) => {
+  // 语义规格 §3.5：渲染端本地点击原样转发到所有窗口（带 id 单卡删；source/title 才动任务），force 不转发
+  reg.on('todo:ai-dismiss', ((_e: never, payload: { id?: string; source?: string; title?: string; force?: boolean }) => {
     if (payload?.source || payload?.title) {
-      ai.dismiss({ source: payload.source, title: payload.title, force: payload.force === true })
+      ai.dismiss({ source: payload.source, title: payload.title })
+    } else if (payload?.id) {
+      deps.broadcastAiDismissed?.({ id: payload.id })
     }
   }) as never)
+  reg.handle('todo:open-external', ((_e: never, url: string) => deps.openExternal?.(url)) as never)
+  reg.handle('todo:training-status', (() => deps.trainingStatusSnapshot?.() ?? []) as never)
 
   // GPU 域
   reg.handle('todo:get-gpus', (() => gpus.getAllGpus()) as never)
