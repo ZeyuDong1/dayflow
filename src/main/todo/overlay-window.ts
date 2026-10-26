@@ -79,10 +79,16 @@ export function showOverlayWindow(settings: TodoSettings): void {
   // 仅 setAlwaysOnTop 对已在顶带的窗口不改变 z 序——同级的 Spotlight/强打断
   // 面板/其他置顶工具后显示就会压住它;moveTop 把它顶回顶带最上层,
   // focusable:false 所以不会抢走任何焦点(审查重点#5:销毁后不抛错)。
+  // 拖动保护:窗口正在被拖动时('move' 事件密集)跳过 moveTop——外部 SetWindowPos
+  // 会打断 OS 的模态移动循环,表现为"无法拖动"。
+  let lastMoveAt = 0
+  win.on('move', () => {
+    lastMoveAt = Date.now()
+  })
   const reassert = () => {
     if (win && !win.isDestroyed() && win.isVisible()) {
       if (!win.isAlwaysOnTop()) win.setAlwaysOnTop(true, 'screen-saver')
-      win.moveTop()
+      if (Date.now() - lastMoveAt > 2500) win.moveTop()
     }
   }
   win.on('show', reassert)

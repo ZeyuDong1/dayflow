@@ -210,6 +210,8 @@ export default function OverlayWindow() {
         '--focus-glow-speed': `${settings.focusGlowSpeed}s`,
         '--marquee-duration': `${Math.max(0.5, 320 / Math.max(1, settings.focusMarqueeSpeed))}s`,
         '--ow-weight': String(settings.fontWeight ?? 400),
+        // v2 样式块把行字号钉在 --ow-base 上,不注入的话设置里的字号滑杆是空调
+        '--ow-base': `${settings.fontSize}px`,
         opacity: settings.opacity / 100,
         fontSize: `${settings.fontSize}px`,
         color: settings.color,
