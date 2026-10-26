@@ -301,6 +301,9 @@ function BulletRow({
   const [showMenu, setShowMenu] = useState(false)
   const [showTimerPicker, setShowTimerPicker] = useState(false)
   const [customMin, setCustomMin] = useState('')
+  // 行内两步删除确认:这个无边框置顶小窗里 window.confirm 的原生对话框
+  // 弹不出来(被面板压住/被吞),点击垃圾桶会变成死按钮——绝不能用原生 confirm
+  const [confirmingDel, setConfirmingDel] = useState(false)
 
   // 标题里含网址时，非编辑态用可点击的分段视图代替 input 展示；
   // input 仍在 DOM（透明、不可交互）以保持键盘导航 / focus 链路。
@@ -423,7 +426,7 @@ function BulletRow({
         )}
 
         {/* 悬停操作 */}
-        <div className="sw-ops">
+        <div className={`sw-ops${confirmingDel ? ' keep' : ''}`}>
           <button
             className={`sw-op${hasCountdown ? ' amber' : ''}`}
             onClick={() => {
@@ -441,8 +444,9 @@ function BulletRow({
             className="sw-op"
             onClick={() => {
               const descCount = countDescendants(node)
-              if (descCount > 0 && !window.confirm(`删除"${task.title}"将同时删除 ${descCount} 个子任务，确定？`)) return
-              actions.deleteTask(task.id)
+              // 有子任务先行内确认;原生 window.confirm 在置顶无边框窗里弹不出来
+              if (descCount > 0) setConfirmingDel(true)
+              else void actions.deleteTask(task.id)
             }}
             title="删除 (Ctrl+Backspace)"
           >
@@ -458,6 +462,23 @@ function BulletRow({
           >
             <MoreIco size={13} />
           </button>
+          {confirmingDel && (
+            <>
+              <span className="sw-delsure">连子任务共 {countDescendants(node) + 1} 项</span>
+              <button
+                className="sw-op danger"
+                onClick={() => {
+                  setConfirmingDel(false)
+                  void actions.deleteTask(task.id)
+                }}
+              >
+                确认删除
+              </button>
+              <button className="sw-op" onClick={() => setConfirmingDel(false)}>
+                取消
+              </button>
+            </>
+          )}
         </div>
       </div>
 

@@ -3456,6 +3456,9 @@ input[type='range']::-webkit-slider-thumb:active {
 .sw-op { padding: 4px; color: var(--text-faint); display: flex; }
 .sw-op:hover { color: var(--accent-deep); }
 .sw-op.amber { color: #d97706; }
+.sw-ops.keep { opacity: 1; }
+.sw-delsure { font-size: 10px; color: #b23c3c; white-space: nowrap; }
+.sw-op.danger:hover { color: var(--red); }
 
 .sw-menu {
   position: absolute; right: 16px; margin-top: 4px;
