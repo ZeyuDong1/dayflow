@@ -567,6 +567,30 @@ function TimingAxis({
 }): React.ReactElement {
   const trackRef = React.useRef<HTMLDivElement>(null)
   const [ppm, setPpm] = useState(1.15)
+  // Ctrl+滚轮缩放:以光标下的时刻为锚点缩放,缩放后把该时刻滚回光标处
+  const pendingScrollRef = React.useRef<number | null>(null)
+  React.useLayoutEffect(() => {
+    const el = trackRef.current
+    if (!el || pendingScrollRef.current == null) return
+    el.scrollTop = Math.max(0, pendingScrollRef.current)
+    pendingScrollRef.current = null
+  }, [ppm])
+  React.useEffect(() => {
+    const el = trackRef.current
+    if (!el) return
+    const onWheel = (e: WheelEvent): void => {
+      if (!e.ctrlKey) return
+      e.preventDefault()
+      const rect = el.getBoundingClientRect()
+      const offsetY = e.clientY - rect.top
+      const minAtCursor = (el.scrollTop + offsetY) / ppm
+      const next = Math.min(12, Math.max(0.2, ppm * (e.deltaY < 0 ? 1.15 : 1 / 1.15)))
+      pendingScrollRef.current = minAtCursor * next - offsetY
+      setPpm(next)
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [ppm])
   const [tip, setTip] = useState<TipState | null>(null)
   const [sessionTip, setSessionTip] = useState<{ s: { id: number; title: string; startTs: number; endTs: number }; x: number; y: number } | null>(null)
   const nowTs = Date.now()
@@ -612,22 +636,9 @@ function TimingAxis({
   return (
     <div className="ta-wrap">
       <div className="ta-zoom" title="悬停看详情 · 放大后显示标题 · 拖拽归类（Alt=建规则）· 双击空白补录">
-        {(
-          [
-            [0.5, '全天概览'],
-            [1.15, '标准'],
-            [2.6, '放大'],
-            [5, '细节']
-          ] as [number, string][]
-        ).map(([v, label]) => (
-          <button
-            key={v}
-            className={`btn small ${Math.abs(ppm - v) < 0.01 ? 'primary' : ''}`}
-            onClick={() => setPpm(v)}
-          >
-            {label}
-          </button>
-        ))}
+        <button className="btn small" title="回到整日视野（也可 Ctrl+滚轮缩放）" onClick={() => setPpm(0.5)}>
+          全天概览
+        </button>
       </div>
       <div
         ref={trackRef}

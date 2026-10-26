@@ -575,7 +575,9 @@ export default function SettingsPage({ onSaved }: { onSaved: () => void }): Reac
       )}
 
       {tab === 'tutor' && (
+        <>
         <div className="panel">
+          <div className="panel-title">导师与目标</div>
           <div className="settings-row">
             <div>
               <div className="settings-row-label">学习导师</div>
@@ -606,6 +608,9 @@ export default function SettingsPage({ onSaved }: { onSaved: () => void }): Reac
             />
           </div>
 
+        </div>
+        <div className="panel">
+          <div className="panel-title">记忆与反思</div>
           <div className="settings-row">
             <div>
               <div className="settings-row-label">导师反思间隔</div>
@@ -659,7 +664,9 @@ export default function SettingsPage({ onSaved }: { onSaved: () => void }): Reac
             </div>
           </div>
 
-          <div className="settings-group-title">监督打断 · 分心时主动提醒</div>
+        </div>
+        <div className="panel">
+          <div className="panel-title">监督打断节奏</div>
           <div className="settings-row">
             <div>
               <div className="settings-row-label">轻提醒</div>
@@ -710,6 +717,30 @@ export default function SettingsPage({ onSaved }: { onSaved: () => void }): Reac
               ))}
             </select>
           </div>
+          <div className="settings-row">
+            <div>
+              <div className="settings-row-label">提醒声音</div>
+              <div className="settings-row-help">强打断时播放提示音。</div>
+            </div>
+            <button
+              className={`switch ${settings.tutor.soundEnabled ? 'on' : ''}`}
+              onClick={() => patch({ tutor: { soundEnabled: !settings.tutor.soundEnabled } })}
+            />
+          </div>
+          <div className="settings-row">
+            <div>
+              <div className="settings-row-label">预览强打断</div>
+              <div className="settings-row-help">
+                对当前窗口演示打断面板：恰好盖住内容区、让出标题栏；把底下窗口最小化或切走，面板自动消失。
+              </div>
+            </div>
+            <button className="btn small" onClick={() => void window.dayflow.supervisionPreview()}>
+              预览
+            </button>
+          </div>
+        </div>
+        <div className="panel">
+          <div className="panel-title">休息规则</div>
           <div className="settings-row">
             <div>
               <div className="settings-row-label">一键休息时长</div>
@@ -767,29 +798,10 @@ export default function SettingsPage({ onSaved }: { onSaved: () => void }): Reac
               onClick={() => patch({ tutor: { allowPostpone: !settings.tutor.allowPostpone } })}
             />
           </div>
-          <div className="settings-row">
-            <div>
-              <div className="settings-row-label">提醒声音</div>
-              <div className="settings-row-help">强打断时播放提示音。</div>
-            </div>
-            <button
-              className={`switch ${settings.tutor.soundEnabled ? 'on' : ''}`}
-              onClick={() => patch({ tutor: { soundEnabled: !settings.tutor.soundEnabled } })}
-            />
-          </div>
-          <div className="settings-row">
-            <div>
-              <div className="settings-row-label">预览强打断</div>
-              <div className="settings-row-help">
-                对当前窗口演示打断面板：恰好盖住内容区、让出标题栏；把底下窗口最小化或切走，面板自动消失。
-              </div>
-            </div>
-            <button className="btn small" onClick={() => void window.dayflow.supervisionPreview()}>
-              预览
-            </button>
-          </div>
 
-          <div className="settings-group-title">学习项目白名单</div>
+        </div>
+        <div className="panel">
+          <div className="panel-title">学习项目白名单</div>
           <div className="settings-row" style={{ alignItems: 'flex-start' }}>
             <div>
               <div className="settings-row-label">算作“学习”的项目</div>
@@ -822,6 +834,7 @@ export default function SettingsPage({ onSaved }: { onSaved: () => void }): Reac
             </div>
           </div>
         </div>
+        </>
       )}
 
       {tab === 'recording' && (
