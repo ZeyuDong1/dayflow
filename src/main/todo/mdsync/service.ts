@@ -136,7 +136,25 @@ export class MdSyncService {
    * 保留已有 `[x]` 行与无法匹配的内容；archived 任务已在文件里的行改 `[x]`，不在的不写。
    */
   async mergeTasksToMd(filePath: string, tasks: TaskRow[]): Promise<ExportResult> {
-    const standardTasks = tasks.filter((t) => (t.type === 'standard' || t.type === undefined) && t.title.trim() !== '')
+    let standardTasks = tasks.filter((t) => (t.type === 'standard' || t.type === undefined) && t.title.trim() !== '')
+
+    // 同 hash 克隆治理(历史重复 bug 积累的完全同题同绑定行):只保留最新一条,
+    // 其余连 DB 一起清理。新建入口本身有同名去重,同题行即事故产物。
+    {
+      const newestByHash = new Map<string, TaskRow>()
+      const cloneIds: number[] = []
+      for (const t of [...standardTasks].sort((a, b) => b.id - a.id)) {
+        if (!t.md_line_hash) continue
+        const prev = newestByHash.get(t.md_line_hash)
+        if (prev) cloneIds.push(t.id)
+        else newestByHash.set(t.md_line_hash, t)
+      }
+      if (cloneIds.length > 0) {
+        this.deleteTasks(cloneIds)
+        const kill = new Set(cloneIds)
+        standardTasks = standardTasks.filter((t) => !kill.has(t.id))
+      }
+    }
 
     let content: string | null = null
     try {
@@ -192,8 +210,23 @@ export class MdSyncService {
     // Phase 1：MD→DB（匹配修复 / 建任务 / [x] 删任务）
     const processedTaskIds = new Set<number>()
     const now = new Date().toISOString()
+    const seenHashLine = new Map<string, number>()
+    const createdOrClaimed = new Set<string>()
+    const lineRemoveIdx: number[] = []
 
     const syncBulletNode = (node: BulletNode, parentId: number | null): number | null => {
+      // 重复行折叠:同 hash 的后续叶子行是历史 bug 积累的重复,直接从 MD 删除
+      if (
+        !node.bullet.checked &&
+        node.children.length === 0 &&
+        (seenHashLine.has(node.bullet.hash) || createdOrClaimed.has(node.bullet.hash))
+      ) {
+        lineRemoveIdx.push(node.bullet.lineIndex)
+        const ex = taskByHash.get(node.bullet.hash)
+        if (ex) processedTaskIds.add(ex.id)
+        return null
+      }
+      if (!node.bullet.checked) seenHashLine.set(node.bullet.hash, node.bullet.lineIndex)
       const existing = taskByHash.get(node.bullet.hash)
 
       if (node.bullet.checked) {
@@ -220,12 +253,21 @@ export class MdSyncService {
       }
 
       const newId = this.insertMdTask(node.bullet, parentId, filePath, now)
+      createdOrClaimed.add(node.bullet.hash)
       result.created++
       processedTaskIds.add(newId)
       for (const child of node.children) syncBulletNode(child, newId)
       return newId
     }
     for (const root of bulletTree) syncBulletNode(root, null)
+
+    // 折叠写回:删掉标记的重复行(倒序 splice 保持行号)
+    if (lineRemoveIdx.length > 0) {
+      const lines = mdContent.split(/\r?\n/)
+      for (const idx of [...lineRemoveIdx].sort((a, b) => b - a)) lines.splice(idx, 1)
+      await fsp.writeFile(filePath, lines.join('\n'), 'utf-8')
+      result.deleted += lineRemoveIdx.length
+    }
 
     // Phase 2：只删"hash 消失"的绑定任务；空白标题=未保存草稿豁免
     for (const task of dbTasks) {
