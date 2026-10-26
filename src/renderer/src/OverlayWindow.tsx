@@ -221,25 +221,23 @@ export default function OverlayWindow() {
         <span className="ow-icon">🧠</span>
         {focusTask ? (
           <span className="ow-focus-body">
-            {crumb && (
-              <span className="ow-crumb">
-                {settings?.focusMarqueeEnabled ? (
-                  <span className="ow-marquee">
-                    <span className="ow-marquee-track">
-                      <span>{crumb} / {focusTask.title}</span>
-                      <span aria-hidden>{crumb} / {focusTask.title}</span>
-                    </span>
+            <span
+              className={settings?.focusMarqueeEnabled ? 'ow-marquee' : 'ow-static'}
+              title={settings?.focusMarqueeEnabled ? undefined : focusTask.title}
+            >
+              <span className={`ow-marquee-track ${settings?.focusGlowEnabled ? 'ow-glow' : ''}`}>
+                <span>
+                  {crumb && <span className="ow-crumb">{crumb} / </span>}
+                  <span className="ow-focus-title">{focusTask.title}</span>
+                </span>
+                {settings?.focusMarqueeEnabled && (
+                  <span aria-hidden>
+                    {crumb && <span className="ow-crumb">{crumb} / </span>}
+                    <span className="ow-focus-title">{focusTask.title}</span>
                   </span>
-                ) : (
-                  <span className={settings?.focusGlowEnabled ? 'ow-glow' : ''}>{crumb} / {focusTask.title}</span>
                 )}
               </span>
-            )}
-            {!crumb && (
-              <span className={settings?.focusGlowEnabled ? 'ow-glow ow-title' : 'ow-title'} ref={titleRef}>
-                {focusTask.title}
-              </span>
-            )}
+            </span>
             <span className="ow-timer">{getTimerDisplay(focusTask, now)}</span>
           </span>
         ) : (

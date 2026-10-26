@@ -3419,3 +3419,21 @@ input[type='range']::-webkit-slider-thumb:active {
 }
 .ta-session-title { font-weight: 600; font-size: 13px; word-break: break-word; }
 .ta-session-hint { color: var(--text-faint); font-size: 11px; }
+
+/* ===== Overlay v2：Focus 标题最大 + 层级字号 + 深色面板（对齐原版观感） ===== */
+.ow-root {
+  --ow-base: 14px;
+  background: rgba(12, 12, 18, 0.66);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.ow-row { font-size: var(--ow-base, 14px); }
+.ow-focus .ow-icon { font-size: calc(var(--ow-base) + 4px); }
+.ow-crumb { font-size: calc(var(--ow-base) - 4px) !important; opacity: 0.65; }
+.ow-focus-title { font-size: calc(var(--ow-base) + 6px) !important; font-weight: 700; line-height: 1.25; }
+.ow-timer { font-size: calc(var(--ow-base) - 2px) !important; }
+.ow-title { font-size: calc(var(--ow-base) - 1px); }
+.ow-static { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ow-static .ow-marquee-track {
+  display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  animation: none !important;
+}
