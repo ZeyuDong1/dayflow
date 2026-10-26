@@ -3538,3 +3538,20 @@ html:has(.ow-root), html:has(.sw-root), html:has(.rw-root) {
 
 /* 独立小窗路由类：渲染前挂上，必中 */
 body.route-floating { background: transparent !important; }
+
+/* 字号层级（用户裁定）：Focus 最大 1.5em，副 Focus 次之 1.2em，其余行更小 */
+.ow-focus-title {
+  font-size: 1.5em !important;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.ow-side .ow-title {
+  font-size: 1.2em;
+  font-weight: 600;
+}
+.ow-side .ow-timer {
+  font-size: 0.9em;
+}
+.ow-crumb {
+  font-size: 0.6em !important;
+}
