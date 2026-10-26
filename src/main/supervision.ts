@@ -22,6 +22,11 @@ import {
   updateNudgeFromFeedback
 } from './ai/tutor'
 import { textComplete, resolveProvider } from './ai/providers'
+import {
+  closeSessionPromptWindow,
+  isSessionPromptWindowOpen,
+  showSessionPromptWindow,
+} from './session-prompt-window'
 
 /**
  * 学习监督引擎(常驻,零 token):本地规则判定当前行为是否学习,
@@ -70,6 +75,9 @@ let breakBalanceMs = 0 // 已攒未用的休息余额
 let lastLearnTickAt = 0 // 连续学习的上一个 tick 时刻(中断即清零,体现"连续")
 let earnedBreakActive = false // 当前正处于番茄支取的休息中
 let earnedCdUntil = 0 // 番茄冷却截止(支取休息自然结束后进入,期内不可再次支取)
+let sessionAway = false // 当前处于 AFK 状态
+let sessionSnoozeUntil = 0 // 跳过后下次重复询问的时刻
+let sessionGateUntil = 0 // "N 分钟后开始"的宽限截止,期内不打断
 // 切回"最近弹过面板的违规窗口"的记忆时长:面板因切走自动消失只是给别的
 // 窗口让路,不代表赦免——记忆期内回到同一违规窗口立即重新覆盖,不留逃逸口。
 const RETURN_MEMORY_MS = 10 * 60_000
@@ -518,6 +526,30 @@ export function stopToday(): void {
   closeInterrupt()
 }
 
+/** 会话询问:现在就开始学习(关窗,监督立即生效) */
+export function startSessionNow(): void {
+  closeSessionPromptWindow()
+  sessionSnoozeUntil = 0
+  sessionGateUntil = 0
+  logEvent('session-start-now', null, null, null)
+}
+
+/** 会话询问:N 分钟后开始学习(宽限期内不打断,到期监督自动生效) */
+export function startSessionIn(minutes: number): void {
+  closeSessionPromptWindow()
+  sessionSnoozeUntil = 0
+  sessionGateUntil = Date.now() + Math.max(1, minutes) * 60_000
+  logEvent('session-start-in', null, null, `${minutes} 分钟`)
+}
+
+/** 会话询问:跳过——X 分钟后重复询问(用户可自行设定 X) */
+export function snoozeSessionPrompt(): void {
+  closeSessionPromptWindow()
+  const min = Math.max(1, getSettings().tutor.sessionPromptSnoozeMin)
+  sessionSnoozeUntil = Date.now() + min * 60_000
+  logEvent('session-snooze', null, null, `${min} 分钟`)
+}
+
 export function supervisionStatus(): {
   active: boolean
   deviating: boolean
@@ -607,6 +639,29 @@ async function tickInner(): Promise<void> {
   if (!settings.tutor.enabled) return
   if (isPaused()) return
 
+  // 会话开始门控(用户定):AFK 超过 Y 分钟后再次活动=开始使用电脑 → 弹窗询问
+  // 何时开始学习;提示窗未决/跳过等待/宽限期内,轻提醒与强遮蔽一律不出
+  const sessionIdleSec = powerMonitor.getSystemIdleTime()
+  const sessionAfkSec = Math.max(1, settings.tutor.sessionPromptAfkMin) * 60
+  if (settings.tutor.sessionPromptEnabled && !isSessionPromptWindowOpen()) {
+    if (sessionIdleSec >= sessionAfkSec) {
+      sessionAway = true
+    } else if (sessionAway) {
+      sessionAway = false
+      if (Date.now() >= sessionSnoozeUntil) {
+        showSessionPromptWindow()
+        logEvent('session-prompt', null, null, null)
+      }
+    }
+  }
+  if (sessionSnoozeUntil > 0 && Date.now() >= sessionSnoozeUntil) {
+    sessionSnoozeUntil = 0
+    if (settings.tutor.sessionPromptEnabled) {
+      showSessionPromptWindow()
+      logEvent('session-prompt', null, null, 're-ask')
+    }
+  }
+
   // 番茄支取的休息自然到期 → 进入冷却(用户设定时长);期内面板不可再次支取。
   // 提前回学习回收的不进冷却(人已经回到学习,惩罚无意义)
   if (earnedBreakActive && breakUntil > 0 && Date.now() >= breakUntil) {
@@ -683,6 +738,9 @@ async function tickInner(): Promise<void> {
     return
   }
   calmSince = 0
+
+  // 会话门控:询问窗未决 / 跳过等待 / 宽限期 → 不计分心、不产生任何打断
+  if (isSessionPromptWindowOpen() || Date.now() < sessionSnoozeUntil || Date.now() < sessionGateUntil) return
 
   if (!episode || episode.hwnd !== fg.hwnd) {
     // 近期在该窗口弹过面板(RETURN_MEMORY_MS 内)= 热违规:不再走轻提醒阶梯,

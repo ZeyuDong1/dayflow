@@ -116,6 +116,9 @@ export interface TutorConfig {
   allowPostpone: boolean // 允许轻提醒通知"稍后提醒"延迟一次；关=点击不延迟
   allowStopToday: boolean // 允许强打断面板"今天到此为止"；关=面板不提供该出口
   earnedBreakCooldownMin: number // 番茄休息冷却:一次支取休息自然结束后,需等冷却才能再次支取(0=无冷却)
+  sessionPromptEnabled: boolean // 会话开始询问:AFK 后回到电脑时弹窗问何时开始学习
+  sessionPromptAfkMin: number // Y 值:AFK 超过 Y 分钟后再次活动视为"开始使用电脑"
+  sessionPromptSnoozeMin: number // X 值:跳过 X 分钟后重复询问是否开始
   breakRatioMinutes: number // 番茄攒息比例:连续学习 N 分钟攒 1 分钟休息(默认 5 = 学25休5)
   soundEnabled: boolean // 强打断时播放提示音
   reflectMinutes: number // 导师反思轮询间隔（分钟, 1-240, 默认 10）

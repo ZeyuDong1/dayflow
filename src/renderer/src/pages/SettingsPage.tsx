@@ -666,6 +666,53 @@ export default function SettingsPage({ onSaved }: { onSaved: () => void }): Reac
 
         </div>
         <div className="panel">
+          <div className="panel-title">自动开始监督</div>
+          <div className="settings-row">
+            <div>
+              <div className="settings-row-label">会话开始询问</div>
+              <div className="settings-row-help">
+                AFK 超过 Y 分钟后再动电脑，弹窗问你何时开始学习：可选 N 分钟后开始，或跳过 X 分钟后再问。未决策期间不会有任何打断。
+              </div>
+            </div>
+            <button
+              className={`switch ${settings.tutor.sessionPromptEnabled ? 'on' : ''}`}
+              onClick={() => patch({ tutor: { sessionPromptEnabled: !settings.tutor.sessionPromptEnabled } })}
+            />
+          </div>
+          <div className="settings-row">
+            <div>
+              <div className="settings-row-label">AFK 判定(Y)</div>
+              <div className="settings-row-help">无操作超过 Y 分钟后再次使用电脑,视为新会话开始。</div>
+            </div>
+            <select
+              value={settings.tutor.sessionPromptAfkMin}
+              onChange={(e) => patch({ tutor: { sessionPromptAfkMin: Number(e.target.value) } })}
+            >
+              {[2, 5, 10, 20, 30, 60].map((m) => (
+                <option key={m} value={m}>
+                  {m} 分钟
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="settings-row">
+            <div>
+              <div className="settings-row-label">跳过间隔(X)</div>
+              <div className="settings-row-help">选择"跳过"后,X 分钟再次弹窗询问。</div>
+            </div>
+            <select
+              value={settings.tutor.sessionPromptSnoozeMin}
+              onChange={(e) => patch({ tutor: { sessionPromptSnoozeMin: Number(e.target.value) } })}
+            >
+              {[1, 2, 5, 10, 15, 30].map((m) => (
+                <option key={m} value={m}>
+                  {m} 分钟
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <div className="panel">
           <div className="panel-title">监督打断节奏</div>
           <div className="settings-row">
             <div>

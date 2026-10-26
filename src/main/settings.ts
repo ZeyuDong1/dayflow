@@ -75,6 +75,9 @@ export const defaultSettings: AppSettings = {
     allowPostpone: true,
     allowStopToday: true,
     earnedBreakCooldownMin: 15, // 番茄休息冷却:支取休息自然结束后需等待才能再次支取(0=无)
+    sessionPromptEnabled: true,
+    sessionPromptAfkMin: 10, // AFK 超过 Y 分钟后再次活动=开始使用电脑
+    sessionPromptSnoozeMin: 5, // 跳过 X 分钟后重复询问
     breakRatioMinutes: 5,
     soundEnabled: true,
     reflectMinutes: 10 // 导师反思轮询间隔（可自定义 1-240 分钟）

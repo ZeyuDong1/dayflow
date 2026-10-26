@@ -247,6 +247,11 @@ const api = {
   supervisionCloseTarget: (): Promise<boolean> => ipcRenderer.invoke('supervision:closeTarget'),
   supervisionWhitelistProject: (projectId: number): Promise<boolean> =>
     ipcRenderer.invoke('supervision:whitelist-project', projectId),
+  supervisionStartSessionNow: (): Promise<void> => ipcRenderer.invoke('supervision:start-session-now'),
+  supervisionStartSessionIn: (minutes: number): Promise<void> =>
+    ipcRenderer.invoke('supervision:start-session-in', minutes),
+  supervisionSnoozeSession: (): Promise<void> => ipcRenderer.invoke('supervision:snooze-session'),
+  supervisionSessionSnoozeMin: (): Promise<number> => ipcRenderer.invoke('supervision:session-snooze-min'),
   onSupervisionInterrupt: (cb: (payload: Record<string, unknown>) => void): (() => void) => {
     const listener = (_e: unknown, payload: Record<string, unknown>): void => cb(payload)
     ipcRenderer.on('supervision:interrupt', listener)

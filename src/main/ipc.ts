@@ -219,6 +219,11 @@ export function registerIpc(win: BrowserWindow): void {
   // 强打断面板出口:最小化/关闭被覆盖的应用(等价标题栏按钮,面板盖住了它们)
   ipcMain.handle('supervision:minimizeTarget', () => supervision.minimizeInterruptTarget())
   ipcMain.handle('supervision:whitelist-project', (_e, projectId: number) => supervision.whitelistProject(projectId))
+  // 会话开始询问
+  ipcMain.handle('supervision:start-session-now', () => supervision.startSessionNow())
+  ipcMain.handle('supervision:start-session-in', (_e, minutes: number) => supervision.startSessionIn(minutes))
+  ipcMain.handle('supervision:snooze-session', () => supervision.snoozeSessionPrompt())
+  ipcMain.handle('supervision:session-snooze-min', () => getSettings().tutor.sessionPromptSnoozeMin)
   ipcMain.handle('supervision:closeTarget', () => supervision.closeInterruptTarget())
 
   // -- Export ------------------------------------------------------------------
