@@ -3833,7 +3833,6 @@ input[type='range']::-webkit-slider-thumb:active {
 .ow-row { font-size: var(--ow-base, 14px); }
 .ow-focus .ow-icon { font-size: calc(var(--ow-base) + 4px); }
 .ow-crumb { font-size: calc(var(--ow-base) - 4px) !important; opacity: 0.65; }
-.ow-focus-title { font-size: calc(var(--ow-base) + 6px) !important; font-weight: 700; line-height: 1.25; }
 .ow-timer { font-size: calc(var(--ow-base) - 2px) !important; }
 .ow-title { font-size: calc(var(--ow-base) - 1px); }
 .ow-static { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -3932,7 +3931,6 @@ input[type='range']::-webkit-slider-thumb:active {
 .ow-static .ow-marquee-track { animation: none !important; display: block; white-space: normal; }
 .ow-static .ow-marquee-track > span[aria-hidden] { display: none; }
 .ow-side .ow-title { font-size: 1.25em; }
-.ow-side .ow-marquee-track { font-size: 1.25em; font-weight: 600; }
 
 /* 独立小窗路由：页面底强制透明（:has 与时序无关，必中） */
 body:has(.ow-root), body:has(.sw-root), body:has(.rw-root),
@@ -3946,17 +3944,43 @@ body.route-floating { background: transparent !important; }
 /* 字号层级（用户裁定）：Focus 最大 2.2em，副 Focus 次之 1.25em，其余行更小
    （此块位于文件最末尾、同优先级 !important 后者胜——改 Focus 字号只改这里） */
 .ow-focus-title {
-  font-size: 1.8em !important;
+  font-size: var(--ow-focus-em, 1.8em) !important;
   font-weight: 700;
   line-height: 1.2;
 }
-.ow-side .ow-title {
-  font-size: 1.25em;
+.ow-side-title {
+  font-size: var(--ow-side-em, 1.25em);
   font-weight: 600;
+  line-height: 1.25;
 }
 .ow-side .ow-timer {
   font-size: 0.9em;
 }
 .ow-crumb {
   font-size: 0.6em !important;
+}
+/* 面包屑(EpochToDo BreadcrumbTitle 对齐): */
+.ow-crumbwrap {
+  flex: 1; min-width: 0; position: relative;
+  display: flex; flex-direction: column; justify-content: center; gap: 2px;
+}
+.ow-crumbrun {
+  display: flex; align-items: center; gap: 2px;
+  font-size: 0.7em; opacity: 0.6; min-width: 0; overflow: hidden;
+}
+.ow-crumblevel { display: inline-flex; align-items: center; gap: 2px; flex-shrink: 0; white-space: nowrap; }
+.ow-crumbtext { white-space: nowrap; }
+.ow-crumbsub {
+  display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; min-width: 0;
+}
+.ow-crumbsub > .ow-marquee, .ow-crumbsub > .ow-static-title { flex: 1; min-width: 0; }
+.ow-static-title {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden; white-space: normal; word-break: break-all; line-height: 1.2;
+}
+.ow-measure {
+  position: absolute; visibility: hidden; pointer-events: none; white-space: nowrap;
+}
+.ow-measure .ow-focus-title, .ow-measure .ow-side-title {
+  display: inline; -webkit-line-clamp: unset; overflow: visible; white-space: nowrap;
 }

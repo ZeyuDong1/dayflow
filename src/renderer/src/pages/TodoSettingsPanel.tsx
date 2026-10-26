@@ -280,6 +280,42 @@ export default function TodoSettingsPanel() {
         </div>
         <div className="settings-row">
           <div>
+            <div className="settings-row-label">主 Focus 字号倍数</div>
+            <div className="settings-row-help">相对悬浮窗基准字号的倍数</div>
+          </div>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <input
+              type="range"
+              min={1}
+              max={3}
+              step={0.1}
+              style={{ width: 160 }}
+              value={num(ov.focusFontScale, 1.8)}
+              onChange={(e) => save({ overlay_settings: { ...ov, focusFontScale: Number(e.target.value) } })}
+            />
+            <span className="settings-row-help">{num(ov.focusFontScale, 1.8)}×</span>
+          </span>
+        </div>
+        <div className="settings-row">
+          <div>
+            <div className="settings-row-label">副 Focus 字号倍数</div>
+            <div className="settings-row-help">副 Focus 标题相对基准字号的倍数</div>
+          </div>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <input
+              type="range"
+              min={1}
+              max={3}
+              step={0.05}
+              style={{ width: 160 }}
+              value={num(ov.sideFontScale, 1.25)}
+              onChange={(e) => save({ overlay_settings: { ...ov, sideFontScale: Number(e.target.value) } })}
+            />
+            <span className="settings-row-help">{num(ov.sideFontScale, 1.25)}×</span>
+          </span>
+        </div>
+        <div className="settings-row">
+          <div>
             <div className="settings-row-label">文字颜色</div>
           </div>
           <span style={{ display: 'flex', gap: 6 }}>

@@ -7,6 +7,8 @@ interface OverlaySettingsShape {
   opacity: number
   fontSize: number
   fontWeight?: number
+  focusFontScale?: number
+  sideFontScale?: number
   color: string
   mouseIgnore: boolean
   focusGlowEnabled: boolean
@@ -46,6 +48,157 @@ function fmtEnd(ts: number): string {
   const d = new Date(ts)
   const p = (x: number) => x.toString().padStart(2, '0')
   return `${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
+}
+
+function ChevronRightIco({ size }: { size: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={{ flexShrink: 0 }}
+    >
+      <path d="m9 18 6-6-6-6" />
+    </svg>
+  )
+}
+
+/** 标题(滚动=双拷贝跑马灯 prefix 随滚 / 静态=line-clamp 截断) */
+function MarqueeTitle({
+  title, prefix, glow, marquee, titleCls,
+}: {
+  title: string
+  prefix?: React.ReactNode
+  glow: boolean
+  marquee: boolean
+  titleCls: string
+}) {
+  if (marquee) {
+    return (
+      <span className="ow-marquee">
+        <span className={`ow-marquee-track ${glow ? 'ow-glow' : ''}`}>
+          <span>
+            {prefix}
+            <span className={titleCls}>{title}</span>
+          </span>
+          <span aria-hidden>
+            {prefix}
+            <span className={titleCls}>{title}</span>
+          </span>
+        </span>
+      </span>
+    )
+  }
+  return (
+    <span className={`${titleCls} ow-static-title`} title={title}>
+      {title}
+    </span>
+  )
+}
+
+interface CrumbTitleProps {
+  title: string
+  ancestors: TaskRow[]
+  settings: OverlaySettingsShape | null
+  emBase: number
+  titleCls: string
+  timerNode: React.ReactNode
+  glow: boolean
+  marquee: boolean
+}
+
+/** 焦点行标题+父任务面包屑(EpochToDo BreadcrumbTitle 对齐):
+ * 滚动模式整条祖先链随跑马灯滚、不裁剪;静态模式在标题上方独立一行,
+ * 隐藏测量层测真实宽度后只显示能完整放下的最近几级(不做半截截断)。 */
+function CrumbTitle({ title, ancestors, settings, emBase, titleCls, timerNode, glow, marquee }: CrumbTitleProps) {
+  const contentRef = useRef<HTMLDivElement>(null)
+  const titleMeasureRef = useRef<HTMLSpanElement>(null)
+  const levelRefs = useRef<(HTMLSpanElement | null)[]>([])
+  const [visible, setVisible] = useState(0)
+  const ancestorKey = ancestors.map((a) => `${a.id}:${a.title}`).join('|')
+
+  useEffect(() => {
+    if (marquee) return
+    const container = contentRef.current
+    const titleEl = titleMeasureRef.current
+    if (!container || !titleEl) return
+    const compute = () => {
+      const c = contentRef.current
+      const t = titleMeasureRef.current
+      if (!c || !t) return
+      const sepW = Math.ceil(emBase * 0.7) + 4 // ChevronRight + 2×gap
+      const levelWs = levelRefs.current.map((el) => el?.offsetWidth ?? Infinity)
+      setVisible(fitBreadcrumbLevels(t.offsetWidth, levelWs, sepW, c.clientWidth))
+    }
+    compute()
+    const ro = new ResizeObserver(compute)
+    if (container) ro.observe(container)
+    return () => ro.disconnect()
+    // ancestorKey 覆盖祖先变化;ancestors 数组身份每轮渲染都变,不进依赖
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ancestorKey, marquee, emBase, title])
+
+  const shown = marquee ? ancestors : ancestors.slice(ancestors.length - visible)
+  const chev = Math.max(8, Math.round(emBase * 0.7))
+  const crumbPrefix =
+    shown.length > 0 && marquee ? (
+      <span className="ow-crumb">
+        {shown.map((p) => (
+          <span key={p.id}>
+            {p.title}
+            <ChevronRightIco size={chev} />
+          </span>
+        ))}
+      </span>
+    ) : undefined
+
+  return (
+    <div ref={contentRef} className="ow-crumbwrap">
+      {!marquee && shown.length > 0 && (
+        <div className="ow-crumbrun">
+          {shown.map((p) => (
+            <span key={p.id} className="ow-crumblevel">
+              <span className="ow-crumbtext">{p.title}</span>
+              <ChevronRightIco size={chev} />
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="ow-crumbsub">
+        <MarqueeTitle
+          title={title}
+          prefix={crumbPrefix}
+          glow={glow}
+          marquee={marquee}
+          titleCls={titleCls}
+        />
+        {timerNode}
+      </div>
+      {!marquee && ancestors.length > 0 && (
+        <div className="ow-measure" aria-hidden>
+          <span ref={titleMeasureRef} className={titleCls}>
+            {title}
+          </span>
+          {ancestors.map((p, i) => (
+            <span
+              key={p.id}
+              ref={(el) => {
+                levelRefs.current[i] = el
+              }}
+              className="ow-crumbtext"
+            >
+              {p.title}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  )
 }
 
 export default function OverlayWindow() {
@@ -196,42 +349,7 @@ export default function OverlayWindow() {
     [tasks, tsMap],
   )
 
-  const bodyRef = useRef<HTMLSpanElement | null>(null)
-  const [focusBoxW, setFocusBoxW] = useState(0)
   const fontSize = settings?.fontSize ?? 14
-  useEffect(() => {
-    const el = bodyRef.current
-    if (!el) return
-    const ro = new ResizeObserver(() => setFocusBoxW(el.clientWidth))
-    ro.observe(el)
-    setFocusBoxW(el.clientWidth)
-    return () => ro.disconnect()
-  }, [focusTask?.id])
-
-  const measureCtx = useMemo(() => document.createElement('canvas').getContext('2d'), [])
-  const measure = useCallback(
-    (text: string, px: number, weight = 400): number => {
-      if (!measureCtx) return text.length * px * 0.9
-      measureCtx.font = `${weight} ${px}px 'LXGW WenKai', sans-serif`
-      return measureCtx.measureText(text).width
-    },
-    [measureCtx],
-  )
-
-  const ancestors = focusTask ? getAncestorChain(tasks, focusTask.id) : []
-  // 面包屑宽度自适应(原版语义):按真实渲染宽度判断还能显示几级父任务,
-  // 不再用车估常数——Focus 标题 1.8em/700,面包屑 0.7em/400,余量 12px
-  const FOCUS_EM = 1.8
-  const CRUMB_EM = 0.7
-  const fitCount = useMemo(() => {
-    if (!focusTask) return 0
-    const titleW = measure(focusTask.title, fontSize * FOCUS_EM, Math.max(700, settings?.fontWeight ?? 400))
-    const sepW = measure(' / ', fontSize * CRUMB_EM)
-    const levelWs = ancestors.map((a) => measure(a.title, fontSize * CRUMB_EM))
-    const budget = Math.max(0, focusBoxW - 12)
-    return fitBreadcrumbLevels(titleW, levelWs, sepW, budget)
-  }, [focusTask, ancestors, fontSize, focusBoxW, measure, settings?.fontWeight])
-  const crumb = ancestors.slice(ancestors.length - fitCount).map((a) => a.title).join(' / ')
 
   const glowVars = settings
     ? ({
@@ -239,6 +357,8 @@ export default function OverlayWindow() {
         '--focus-glow-speed': `${settings.focusGlowSpeed}s`,
         '--marquee-duration': `${Math.max(0.5, 320 / Math.max(1, settings.focusMarqueeSpeed))}s`,
         '--ow-weight': String(settings.fontWeight ?? 400),
+        '--ow-focus-em': `${settings.focusFontScale ?? 1.8}em`,
+        '--ow-side-em': `${settings.sideFontScale ?? 1.25}em`,
         // v2 样式块把行字号钉在 --ow-base 上,不注入的话设置里的字号滑杆是空调
         '--ow-base': `${settings.fontSize}px`,
         opacity: settings.opacity / 100,
@@ -253,27 +373,16 @@ export default function OverlayWindow() {
       <div className="ow-row ow-focus">
         <span className="ow-icon">🧠</span>
         {focusTask ? (
-          <span className="ow-focus-body">
-            <span
-              ref={bodyRef}
-              className={settings?.focusMarqueeEnabled ? 'ow-marquee' : 'ow-static'}
-              title={settings?.focusMarqueeEnabled ? undefined : focusTask.title}
-            >
-              <span className={`ow-marquee-track ${settings?.focusGlowEnabled ? 'ow-glow' : ''}`}>
-                <span>
-                  {crumb && <span className="ow-crumb">{crumb} / </span>}
-                  <span className="ow-focus-title">{focusTask.title}</span>
-                </span>
-                {settings?.focusMarqueeEnabled && (
-                  <span aria-hidden>
-                    {crumb && <span className="ow-crumb">{crumb} / </span>}
-                    <span className="ow-focus-title">{focusTask.title}</span>
-                  </span>
-                )}
-              </span>
-            </span>
-            <span className="ow-timer">{getTimerDisplay(focusTask, now)}</span>
-          </span>
+          <CrumbTitle
+            title={focusTask.title}
+            ancestors={getAncestorChain(tasks, focusTask.id)}
+            settings={settings}
+            emBase={fontSize}
+            titleCls="ow-focus-title"
+            glow={!!settings?.focusGlowEnabled}
+            marquee={!!settings?.focusMarqueeEnabled}
+            timerNode={<span className="ow-timer">{getTimerDisplay(focusTask, now)}</span>}
+          />
         ) : (
           <span className="ow-dim">No Active Focus</span>
         )}
@@ -282,17 +391,16 @@ export default function OverlayWindow() {
       {sideTasks.map((t) => (
         <div key={t.id} className="ow-row ow-side">
           <span className="ow-icon">◎</span>
-          {settings?.sideMarqueeEnabled ? (
-            <span className="ow-marquee">
-              <span className={`ow-marquee-track ${settings?.sideGlowEnabled ? 'ow-glow' : ''}`}>
-                <span>{t.title}</span>
-                <span aria-hidden>{t.title}</span>
-              </span>
-            </span>
-          ) : (
-            <span className={settings?.sideGlowEnabled ? 'ow-glow ow-title' : 'ow-title'}>{t.title}</span>
-          )}
-          <span className="ow-timer">{getTimerDisplay(t, now)}</span>
+          <CrumbTitle
+            title={t.title}
+            ancestors={getAncestorChain(tasks, t.id)}
+            settings={settings}
+            emBase={fontSize}
+            titleCls="ow-side-title"
+            glow={!!settings?.sideGlowEnabled}
+            marquee={!!settings?.sideMarqueeEnabled}
+            timerNode={<span className="ow-timer">{getTimerDisplay(t, now)}</span>}
+          />
         </div>
       ))}
 

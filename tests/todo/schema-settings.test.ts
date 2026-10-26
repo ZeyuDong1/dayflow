@@ -39,6 +39,8 @@ describe('todo settings', () => {
       opacity: 80,
       fontSize: 14,
       fontWeight: 400,
+      focusFontScale: 1.8,
+      sideFontScale: 1.25,
       color: '#ffffff',
       mouseIgnore: true,
       focusGlowEnabled: true,
@@ -64,6 +66,8 @@ describe('todo settings', () => {
     const s = getTodoSettings(db)
     expect(s.overlay_settings.opacity).toBe(80)
     expect(s.overlay_settings.fontSize).toBe(14)
+    expect(s.overlay_settings.focusFontScale).toBe(1.8)
+    expect(s.overlay_settings.sideFontScale).toBe(1.25)
     expect(s.overlay_settings.color).toBe('#ffffff')
     expect(s.overlay_settings.focusGlowIntensity).toBe(6)
     expect(s.overlay_bounds).toEqual({ x: 100, y: 100, width: 350, height: 250 })

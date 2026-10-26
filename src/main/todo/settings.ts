@@ -9,6 +9,8 @@ export interface OverlaySettings {
   opacity: number // 10–100 %，默认 80
   fontSize: number // 10–40 px，默认 14
   fontWeight: number // 300–900 字重，默认 400（≥800 由 Chromium 合成加粗）
+  focusFontScale: number // 主 Focus 标题相对基准字号的倍数，默认 1.8
+  sideFontScale: number // 副 Focus 标题相对基准字号的倍数，默认 1.25
   color: string // 文字颜色，默认 #ffffff
   mouseIgnore: boolean // 点击穿透，默认开
   focusGlowEnabled: boolean
@@ -54,6 +56,8 @@ export const DEFAULT_TODO_SETTINGS: TodoSettings = {
     opacity: 80,
     fontSize: 14,
     fontWeight: 400,
+    focusFontScale: 1.8,
+    sideFontScale: 1.25,
     color: '#ffffff',
     mouseIgnore: true,
     focusGlowEnabled: true,
@@ -73,6 +77,11 @@ export const DEFAULT_TODO_SETTINGS: TodoSettings = {
 }
 
 export const TODO_SETTINGS_KEY = 'todo-settings'
+
+function clampNum(v: unknown, min: number, max: number, fallback: number): number {
+  const n = typeof v === 'number' && Number.isFinite(v) ? v : fallback
+  return Math.min(max, Math.max(min, n))
+}
 
 function positiveMinutes(v: unknown, fallback: number): number {
   return typeof v === 'number' && Number.isFinite(v) && v >= 1 ? v : fallback
@@ -98,6 +107,8 @@ function overlaySettings(v: unknown): OverlaySettings {
     opacity: clampInt(o.opacity, 10, 100, d.opacity),
     fontSize: clampInt(o.fontSize, 10, 40, d.fontSize),
     fontWeight: Math.round(clampInt(o.fontWeight, 300, 900, d.fontWeight) / 100) * 100,
+    focusFontScale: Math.round(clampNum(o.focusFontScale, 1, 3, d.focusFontScale) * 100) / 100,
+    sideFontScale: Math.round(clampNum(o.sideFontScale, 1, 3, d.sideFontScale) * 100) / 100,
     color: typeof o.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(o.color) ? o.color : d.color,
     mouseIgnore: typeof o.mouseIgnore === 'boolean' ? o.mouseIgnore : d.mouseIgnore,
     focusGlowEnabled: typeof o.focusGlowEnabled === 'boolean' ? o.focusGlowEnabled : d.focusGlowEnabled,
