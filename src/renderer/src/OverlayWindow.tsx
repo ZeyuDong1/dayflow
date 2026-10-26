@@ -116,7 +116,8 @@ interface CrumbTitleProps {
  * 滚动模式整条祖先链随跑马灯滚、不裁剪;静态模式在标题上方独立一行,
  * 隐藏测量层测真实宽度后只显示能完整放下的最近几级(不做半截截断)。 */
 function CrumbTitle({ title, ancestors, settings, emBase, titleCls, timerNode, glow, marquee }: CrumbTitleProps) {
-  const contentRef = useRef<HTMLDivElement>(null)
+  const subRef = useRef<HTMLDivElement>(null)
+  const timerMeasureRef = useRef<HTMLSpanElement>(null)
   const titleMeasureRef = useRef<HTMLSpanElement>(null)
   const levelRefs = useRef<(HTMLSpanElement | null)[]>([])
   const [visible, setVisible] = useState(0)
@@ -124,33 +125,35 @@ function CrumbTitle({ title, ancestors, settings, emBase, titleCls, timerNode, g
 
   useEffect(() => {
     if (marquee) return
-    const container = contentRef.current
+    const sub = subRef.current
     const titleEl = titleMeasureRef.current
-    if (!container || !titleEl) return
+    if (!sub || !titleEl) return
     const compute = () => {
-      const c = contentRef.current
+      const s = subRef.current
       const t = titleMeasureRef.current
-      if (!c || !t) return
+      if (!s || !t) return
       const sepW = Math.ceil(emBase * 0.7) + 4 // ChevronRight + 2×gap
+      const timerW = (timerMeasureRef.current?.offsetWidth ?? 0) + 8 // gap
       const levelWs = levelRefs.current.map((el) => el?.offsetWidth ?? Infinity)
-      setVisible(fitBreadcrumbLevels(t.offsetWidth, levelWs, sepW, c.clientWidth))
+      setVisible(fitBreadcrumbLevels(t.offsetWidth, levelWs, sepW, Math.max(0, s.clientWidth - timerW)))
     }
     compute()
     const ro = new ResizeObserver(compute)
-    if (container) ro.observe(container)
+    if (sub) ro.observe(sub)
     return () => ro.disconnect()
     // ancestorKey 覆盖祖先变化;ancestors 数组身份每轮渲染都变,不进依赖
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ancestorKey, marquee, emBase, title])
 
-  const shown = marquee ? ancestors : ancestors.slice(ancestors.length - visible)
+  // EpochToDo 形态:面包屑与标题同一行(小字+›箭头),只显放得下的最近几级
+  const shown = ancestors.slice(ancestors.length - visible)
   const chev = Math.max(8, Math.round(emBase * 0.7))
-  const crumbPrefix =
-    shown.length > 0 && marquee ? (
-      <span className="ow-crumb">
+  const crumbLevels =
+    shown.length > 0 ? (
+      <span className="ow-crumb-inline">
         {shown.map((p) => (
-          <span key={p.id}>
-            {p.title}
+          <span key={p.id} className="ow-crumblevel">
+            <span className="ow-crumbtext">{p.title}</span>
             <ChevronRightIco size={chev} />
           </span>
         ))}
@@ -158,27 +161,30 @@ function CrumbTitle({ title, ancestors, settings, emBase, titleCls, timerNode, g
     ) : undefined
 
   return (
-    <div ref={contentRef} className="ow-crumbwrap">
-      {!marquee && shown.length > 0 && (
-        <div className="ow-crumbrun">
-          {shown.map((p) => (
-            <span key={p.id} className="ow-crumblevel">
-              <span className="ow-crumbtext">{p.title}</span>
-              <ChevronRightIco size={chev} />
+    <div ref={subRef} className="ow-crumbsub">
+      {!marquee && crumbLevels}
+      <MarqueeTitle
+        title={title}
+        prefix={
+          marquee && shown.length > 0 ? (
+            <span className="ow-crumb">
+              {shown.map((p) => (
+                <span key={p.id}>
+                  {p.title}
+                  <ChevronRightIco size={chev} />
+                </span>
+              ))}
             </span>
-          ))}
-        </div>
-      )}
-      <div className="ow-crumbsub">
-        <MarqueeTitle
-          title={title}
-          prefix={crumbPrefix}
-          glow={glow}
-          marquee={marquee}
-          titleCls={titleCls}
-        />
+          ) : undefined
+        }
+        glow={glow}
+        marquee={marquee}
+        titleCls={titleCls}
+      />
+      <span ref={timerMeasureRef} className="ow-measure" aria-hidden>
         {timerNode}
-      </div>
+      </span>
+      {timerNode}
       {!marquee && ancestors.length > 0 && (
         <div className="ow-measure" aria-hidden>
           <span ref={titleMeasureRef} className={titleCls}>
