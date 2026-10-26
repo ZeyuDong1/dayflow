@@ -36,6 +36,8 @@ export interface TodoSettings {
   overlay_bounds: OverlayBounds
   wandb_api_key: string
   wandb_entity: string
+  md_sync_enabled: boolean
+  md_sync_folder: string
 }
 
 export type DeepPartial<T> = { [K in keyof T]?: T[K] extends object ? DeepPartial<T[K]> : T[K] }
@@ -62,6 +64,8 @@ export const DEFAULT_TODO_SETTINGS: TodoSettings = {
   overlay_bounds: { x: 100, y: 100, width: 350, height: 250 },
   wandb_api_key: '',
   wandb_entity: '',
+  md_sync_enabled: false,
+  md_sync_folder: '',
 }
 
 export const TODO_SETTINGS_KEY = 'todo-settings'
@@ -138,6 +142,8 @@ export function getTodoSettings(db: TodoDB): TodoSettings {
     overlay_bounds: overlayBounds(raw.overlay_bounds),
     wandb_api_key: typeof raw.wandb_api_key === 'string' ? raw.wandb_api_key : DEFAULT_TODO_SETTINGS.wandb_api_key,
     wandb_entity: typeof raw.wandb_entity === 'string' ? raw.wandb_entity : DEFAULT_TODO_SETTINGS.wandb_entity,
+    md_sync_enabled: typeof raw.md_sync_enabled === 'boolean' ? raw.md_sync_enabled : DEFAULT_TODO_SETTINGS.md_sync_enabled,
+    md_sync_folder: typeof raw.md_sync_folder === 'string' ? raw.md_sync_folder : DEFAULT_TODO_SETTINGS.md_sync_folder,
   }
 }
 
@@ -157,6 +163,8 @@ export function saveTodoSettings(db: TodoDB, patch: DeepPartial<TodoSettings>): 
     overlay_bounds: patch.overlay_bounds ? { ...current.overlay_bounds, ...patch.overlay_bounds } : current.overlay_bounds,
     wandb_api_key: patch.wandb_api_key ?? current.wandb_api_key,
     wandb_entity: patch.wandb_entity ?? current.wandb_entity,
+    md_sync_enabled: patch.md_sync_enabled ?? current.md_sync_enabled,
+    md_sync_folder: patch.md_sync_folder ?? current.md_sync_folder,
   }
   db.run('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)', [
     TODO_SETTINGS_KEY,

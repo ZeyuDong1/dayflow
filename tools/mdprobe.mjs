@@ -1,0 +1,16 @@
+import { hashContent, planMdMerge, planSubtreeMove, computeTaskRepairs } from '../src/main/todo/mdsync/pure.ts'
+const mk = (o) => ({ status: 'queued', parent_id: null, type: 'standard', sort_order: o.id, is_next_action: 1, md_file_path: null, md_line_hash: null, ...o })
+const H = (t) => hashContent(t)
+const r3 = planMdMerge('- [ ] 旧名\n    - [x] 已完成行\n  - [ ] 无关行', [mk({ id: 1, title: '新名', md_line_hash: H('旧名') }), mk({ id: 3, title: '无关行', md_line_hash: H('无关行') })], '/x/epochtodo.md')
+console.log('CASE3 lines:', JSON.stringify(r3.newContent.split('\n')), 'diag:', JSON.stringify(r3.diagnostics), 'rebind:', JSON.stringify(r3.rebind))
+const r3b = planMdMerge('- [ ] 旧名\n    - [x] 已完成行\n  - [ ] 无关行', [mk({ id: 1, title: '新名', md_file_path: '/x/epochtodo.md', md_line_hash: H('旧名') }), mk({ id: 3, title: '无关行', md_file_path: '/x/epochtodo.md', md_line_hash: H('无关行') })], '/x/epochtodo.md')
+console.log('CASE3b lines:', JSON.stringify(r3b.newContent.split('\n')), 'diag:', JSON.stringify(r3b.diagnostics))
+const r2 = planMdMerge(null, [mk({ id: 1, title: 'a' }), mk({ id: 2, title: 'b', parent_id: 1 })], '/x/epochtodo.md')
+console.log('CASE2 diag:', JSON.stringify(r2.diagnostics), 'rebind:', r2.rebind.length)
+const r4 = planMdMerge('- [ ] 父\n- [ ] 老行', [mk({ id: 1, title: '父', md_file_path: '/x/epochtodo.md', md_line_hash: H('父') }), mk({ id: 2, title: '孤儿子', parent_id: 1 }), mk({ id: 3, title: '全新' })], '/x/epochtodo.md')
+console.log('CASE4 lines:', JSON.stringify(r4.newContent.split('\n')), 'diag:', JSON.stringify(r4.diagnostics))
+const tasks5 = [mk({ id: 1, title: '父', md_file_path: '/x/epochtodo.md', md_line_hash: H('父') }), mk({ id: 2, title: '要搬', parent_id: 1, md_file_path: '/x/epochtodo.md', md_line_hash: H('要搬') }), mk({ id: 3, title: '它的子', parent_id: 2 }), mk({ id: 4, title: '尾行', md_file_path: '/x/epochtodo.md', md_line_hash: H('尾行') })]
+const r5 = planSubtreeMove('- [ ] 父\n- [ ] 要搬\n  - [ ] 它的子\n  注记行\n- [ ] 尾行', tasks5, 2)
+console.log('CASE5:', r5 ? JSON.stringify(r5.newContent.split('\n')) + ' moved ' + r5.moved : 'null')
+const r1 = computeTaskRepairs(mk({ id: 1, title: '旧名', status: 'archived' }), '新名', 5, new Set())
+console.log('CASE1 updates:', JSON.stringify(r1.updates))

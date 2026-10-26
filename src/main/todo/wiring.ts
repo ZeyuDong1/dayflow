@@ -3,7 +3,7 @@
  * 广播 'todo:event' 发往除 Reminder 窗外的所有窗口；Reminder 窗走专属队列，
  * 软提醒（type==='reminder'）不弹窗。
  */
-import { app, BrowserWindow, Notification, ipcMain } from 'electron'
+import { app, BrowserWindow, Dialog, Notification, ipcMain, dialog } from 'electron'
 import { db } from '../db'
 import { TaskService } from './service'
 import { GpuService } from './gpu-service'
@@ -35,6 +35,10 @@ import {
   type SessionSample,
 } from './compliance'
 import { createLlmJudge } from './compliance-judge'
+import { AutoSyncManager } from './mdsync/autoSync'
+import { MdSyncService, getEpochtodoPath } from './mdsync/service'
+import { parseMdContent } from './mdsync/pure'
+import fs from 'fs'
 
 export interface TodoRuntime {
   tasks: TaskService
@@ -61,6 +65,7 @@ export function createTodoRuntime(opts: { port?: number } = {}): TodoRuntime {
     if (e.type === 'ai:reminder-dismissed' && (e.dismissed ?? 0) > 0) {
       hideReminderWindow() // 硬提醒残留弹窗过期作废
     }
+    if (e.type === 'fetch-tasks') autoSync.triggerExport() // broadcastFetchTasks = 刷新 + MD 导出
     for (const win of BrowserWindow.getAllWindows()) {
       if (win.isDestroyed() || win === getReminderWindow()) continue // 审查重点#2
       win.webContents.send('todo:event', e)
@@ -90,6 +95,59 @@ export function createTodoRuntime(opts: { port?: number } = {}): TodoRuntime {
     port: opts.port,
   })
 
+  // mdSync（语义规格 §5.5/§5.6）：设置驱动生命周期 + IPC 面
+  const mdSyncService = new MdSyncService(db)
+  const autoSync = new AutoSyncManager({ db, tasks, broadcast: broadcast as never })
+
+  const mdSync = {
+    async selectFolder(): Promise<string | null> {
+      const r = await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] })
+      return r.canceled ? null : (r.filePaths[0] ?? null)
+    },
+    async setConfig(enabled: boolean, folder: string): Promise<void> {
+      saveTodoSettings(db, { md_sync_enabled: enabled, md_sync_folder: folder })
+      if (enabled && folder) autoSync.start(folder)
+      else autoSync.stop()
+    },
+    async getStatus() {
+      const st = getSettings()
+      return {
+        enabled: st.md_sync_enabled,
+        folder: st.md_sync_folder,
+        filePath: st.md_sync_folder ? getEpochtodoPath(st.md_sync_folder) : '',
+        watching: autoSync.isEnabled,
+        lastSyncTime: autoSync.lastSyncTime || null,
+        error: null,
+      }
+    },
+    async importFile(filePath: string, force: boolean) {
+      const r = await mdSyncService.importFromMd(filePath, force)
+      broadcast({ type: 'fetch-tasks' })
+      return r
+    },
+    async exportTo(folder: string) {
+      await mdSyncService.exportToMd(getEpochtodoPath(folder), tasks.getAllTasks())
+    },
+    async syncNow(folder: string) {
+      const r = await mdSyncService.syncWithMd(getEpochtodoPath(folder), true)
+      broadcast({ type: 'fetch-tasks' })
+      return r
+    },
+    async checkFile(folder: string) {
+      const fp2 = getEpochtodoPath(folder)
+      if (!fs.existsSync(fp2)) return { exists: false, bullets: 0, titles: [] as string[] }
+      const rows = parseMdContent(fs.readFileSync(fp2, 'utf-8'))
+      return { exists: true, bullets: rows.length, titles: rows.map((r) => r.text) }
+    },
+    async checkDuplicates(titles: string[]) {
+      const set = new Set(tasks.getAllTasks().filter((t) => t.type === 'standard').map((t) => t.title))
+      return titles.filter((t) => set.has(t))
+    },
+    async readFile(filePath: string) {
+      return fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf-8') : ''
+    },
+  }
+
   const ipcDeps: TodoIpcDeps = {
     tasks,
     gpus,
@@ -104,6 +162,7 @@ export function createTodoRuntime(opts: { port?: number } = {}): TodoRuntime {
     focusSessions,
     sessionAnalyses,
     analyzeDay,
+    mdSync,
   }
   setDraftCleanup(() => {
     cleanupDraftTasks(tasks.getAllTasks(), (id) => tasks.deleteTask(id))
@@ -166,6 +225,10 @@ export function createTodoRuntime(opts: { port?: number } = {}): TodoRuntime {
       timerManager.start()
       registerSpotlightShortcut('Alt+Space', toggleSpotlight) // 失败仅记日志
       showOverlayWindow(getSettings())
+      {
+        const st = getSettings()
+        if (st.md_sync_enabled && st.md_sync_folder) autoSync.start(st.md_sync_folder)
+      }
       try {
         await server.start()
       } catch {
@@ -174,6 +237,7 @@ export function createTodoRuntime(opts: { port?: number } = {}): TodoRuntime {
     },
     async stop() {
       unregisterShortcuts()
+      autoSync.stop()
       timerManager.stop()
       await server.stop()
     },

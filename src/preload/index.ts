@@ -320,6 +320,28 @@ const api = {
       ipcRenderer.invoke('todo:focus-sessions', day),
     sessionAnalyses: (day: string): Promise<unknown[]> => ipcRenderer.invoke('todo:session-analyses', day),
     analyzeDay: (day: string): Promise<number> => ipcRenderer.invoke('todo:analyze-day', day),
+    mdSync: {
+      selectFolder: (): Promise<string | null> => ipcRenderer.invoke('md-sync:select-folder'),
+      setConfig: (enabled: boolean, folder: string): Promise<void> =>
+        ipcRenderer.invoke('md-sync:set-config', enabled, folder),
+      getStatus: (): Promise<{
+        enabled: boolean
+        folder: string
+        filePath: string
+        watching: boolean
+        lastSyncTime: number | null
+        error: string | null
+      }> => ipcRenderer.invoke('md-sync:get-status'),
+      importFile: (filePath: string, force: boolean): Promise<{ created: number; updated: number; duplicates: string[] }> =>
+        ipcRenderer.invoke('md-sync:import', filePath, force),
+      exportTo: (folder: string): Promise<void> => ipcRenderer.invoke('md-sync:export', folder),
+      syncNow: (folder: string): Promise<{ created: number; updated: number; deleted: number }> =>
+        ipcRenderer.invoke('md-sync:sync', folder),
+      checkFile: (folder: string): Promise<{ exists: boolean; bullets: number; titles: string[] }> =>
+        ipcRenderer.invoke('md-sync:check-file', folder),
+      checkDuplicates: (titles: string[]): Promise<string[]> => ipcRenderer.invoke('md-sync:check-duplicates', titles),
+      readFile: (filePath: string): Promise<string> => ipcRenderer.invoke('md-sync:read-file', filePath),
+    },
     execCommand: (
       parsed: import('../shared/commands').ParsedCommand,
       ctx: { activeTaskId?: number | null; highlightedId?: number | null; suggestionIds?: number[] },

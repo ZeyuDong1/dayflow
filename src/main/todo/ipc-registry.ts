@@ -36,6 +36,24 @@ export interface TodoIpcDeps {
   focusSessions?: (day: string) => { id: number; taskId: number | null; title: string; startTs: number; endTs: number }[]
   sessionAnalyses?: (day: string) => unknown[]
   analyzeDay?: (day: string) => Promise<number>
+  mdSync?: {
+    selectFolder(): Promise<string | null>
+    setConfig(enabled: boolean, folder: string): Promise<void>
+    getStatus(): Promise<{
+      enabled: boolean
+      folder: string
+      filePath: string
+      watching: boolean
+      lastSyncTime: number | null
+      error: string | null
+    }>
+    importFile(filePath: string, force: boolean): Promise<{ created: number; updated: number; duplicates: string[] }>
+    exportTo(folder: string): Promise<void>
+    syncNow(folder: string): Promise<{ created: number; updated: number; deleted: number }>
+    checkFile(folder: string): Promise<{ exists: boolean; bullets: number; titles: string[] }>
+    checkDuplicates(titles: string[]): Promise<string[]>
+    readFile(filePath: string): Promise<string>
+  }
 }
 
 /** timer:start-focus 的副焦点轮换：清目标 side 标志；旧焦点非自身则尝试降级为副（满 2 静默跳过）。 */
@@ -147,6 +165,35 @@ export function registerTodoIpc(reg: IpcRegistry, deps: TodoIpcDeps): void {
   reg.handle('todo:focus-sessions', ((_e: never, day: string) => deps.focusSessions?.(day) ?? []) as never)
   reg.handle('todo:session-analyses', ((_e: never, day: string) => deps.sessionAnalyses?.(day) ?? []) as never)
   reg.handle('todo:analyze-day', ((_e: never, day: string) => deps.analyzeDay?.(day) ?? Promise.resolve(0)) as never)
+
+  // MD 同步域（语义规格 §10；协议语义按功能清单 §七）
+  reg.handle('md-sync:select-folder', (() => deps.mdSync?.selectFolder() ?? Promise.resolve(null)) as never)
+  reg.handle(
+    'md-sync:set-config',
+    ((_e: never, enabled: boolean, folder: string) => deps.mdSync?.setConfig(enabled, folder) ?? Promise.resolve()) as never,
+  )
+  reg.handle('md-sync:get-status', (() => deps.mdSync?.getStatus() ?? Promise.resolve(null)) as never)
+  reg.handle(
+    'md-sync:import',
+    ((_e: never, filePath: string, force: boolean) => deps.mdSync?.importFile(filePath, force) ?? Promise.resolve(null)) as never,
+  )
+  reg.handle(
+    'md-sync:export',
+    ((_e: never, folder: string) => deps.mdSync?.exportTo(folder) ?? Promise.resolve()) as never,
+  )
+  reg.handle(
+    'md-sync:sync',
+    ((_e: never, folder: string) => deps.mdSync?.syncNow(folder) ?? Promise.resolve(null)) as never,
+  )
+  reg.handle(
+    'md-sync:check-file',
+    ((_e: never, folder: string) => deps.mdSync?.checkFile(folder) ?? Promise.resolve(null)) as never,
+  )
+  reg.handle(
+    'md-sync:check-duplicates',
+    ((_e: never, titles: string[]) => deps.mdSync?.checkDuplicates(titles) ?? Promise.resolve([])) as never,
+  )
+  reg.handle('md-sync:read-file', ((_e: never, filePath: string) => deps.mdSync?.readFile(filePath) ?? Promise.resolve('')) as never)
   reg.on('todo:reminder-snooze', ((_e: never, taskId: number, minutes: number) => {
     timerManager.snoozeTrainingReminder(taskId, minutes)
     deps.hideReminder?.()

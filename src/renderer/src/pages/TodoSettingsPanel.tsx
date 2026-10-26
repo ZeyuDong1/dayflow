@@ -4,9 +4,40 @@ import React, { useEffect, useState } from 'react'
 export default function TodoSettingsPanel() {
   const [s, setS] = useState<Record<string, unknown> | null>(null)
   const [msg, setMsg] = useState('')
+  const [mdStatus, setMdStatus] = useState<{
+    enabled: boolean
+    folder: string
+    filePath: string
+    watching: boolean
+    lastSyncTime: number | null
+  } | null>(null)
   useEffect(() => {
     void window.dayflow.todo.getSettings().then((v) => setS(v as Record<string, unknown>))
+    void window.dayflow.todo.mdSync.getStatus().then(setMdStatus)
   }, [])
+  const loadMd = () => void window.dayflow.todo.mdSync.getStatus().then(setMdStatus)
+  const pickFolder = async () => {
+    const folder = await window.dayflow.todo.mdSync.selectFolder()
+    if (!folder) return
+    await window.dayflow.todo.mdSync.setConfig(true, folder)
+    setMsg('已启用 MD 同步')
+    loadMd()
+    setTimeout(() => setMsg(''), 1500)
+  }
+  const toggleMd = async () => {
+    if (!mdStatus) return
+    await window.dayflow.todo.mdSync.setConfig(!mdStatus.enabled, mdStatus.folder)
+    setMsg(mdStatus.enabled ? '已关闭 MD 同步' : '已开启 MD 同步')
+    loadMd()
+    setTimeout(() => setMsg(''), 1500)
+  }
+  const syncNow = async () => {
+    if (!mdStatus?.folder) return
+    const r = await window.dayflow.todo.mdSync.syncNow(mdStatus.folder)
+    setMsg(`已同步：新建 ${r.created} · 更新 ${r.updated} · 删除 ${r.deleted}`)
+    loadMd()
+    setTimeout(() => setMsg(''), 2500)
+  }
   const save = (patch: Record<string, unknown>) => {
     void window.dayflow.todo.updateSettings(patch).then((v) => {
       setS(v as Record<string, unknown>)
@@ -269,6 +300,38 @@ export default function TodoSettingsPanel() {
               副{ov.sideMarqueeEnabled ? '开' : '关'}
             </button>
           </span>
+        </div>
+      </div>
+      <div className="panel">
+        <div className="panel-title">MD 同步</div>
+        <div className="settings-row">
+          <div>
+            <div className="settings-row-label">Markdown 双向同步</div>
+            <div className="settings-row-help">任务列表保存为所选文件夹内的 epochtodo.md，Obsidian/VS Code 可直接编辑（勾选=完成删除，[x] 行永不删除）</div>
+          </div>
+          <button className="btn small" onClick={() => void toggleMd()} disabled={!mdStatus?.folder}>
+            {mdStatus?.enabled ? '已开启' : '已关闭'}
+          </button>
+        </div>
+        <div className="settings-row">
+          <div>
+            <div className="settings-row-label">同步目录</div>
+            <div className="settings-row-help">{mdStatus?.filePath || '未选择（选择后自动启用）'}</div>
+          </div>
+          <button className="btn small" onClick={() => void pickFolder()}>
+            选择目录并启用
+          </button>
+        </div>
+        <div className="settings-row">
+          <div>
+            <div className="settings-row-label">上次同步</div>
+            <div className="settings-row-help">
+              {mdStatus?.lastSyncTime ? new Date(mdStatus.lastSyncTime).toLocaleTimeString() : '尚未同步'}
+            </div>
+          </div>
+          <button className="btn small" onClick={() => void syncNow()} disabled={!mdStatus?.folder}>
+            立即同步
+          </button>
         </div>
       </div>
       {msg && <div className="settings-row-help">{msg}</div>}
