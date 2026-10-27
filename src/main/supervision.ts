@@ -78,6 +78,7 @@ let earnedCdUntil = 0 // 番茄冷却截止(支取休息自然结束后进入,�
 let sessionAway = false // 当前处于 AFK 状态
 let sessionSnoozeUntil = 0 // 跳过后下次重复询问的时刻
 let sessionGateUntil = 0 // "N 分钟后开始"的宽限截止,期内不打断
+let initialSessionPromptFired = false // 开场第一次询问是否已弹过(每次 app 运行一次)
 // 切回"最近弹过面板的违规窗口"的记忆时长:面板因切走自动消失只是给别的
 // 窗口让路,不代表赦免——记忆期内回到同一违规窗口立即重新覆盖,不留逃逸口。
 const RETURN_MEMORY_MS = 10 * 60_000
@@ -827,6 +828,21 @@ export function startSupervision(): void {
   stopSupervision()
   pausedDayKey = null
   tickTimer = setInterval(() => void tick(), TICK_MS)
+  // 刚打开学习导师 → 直接进入第一次询问阶段(用户定);每次 app 运行只问一次,
+  // 之后回到常规节奏:AFK→再活动 才重复询问
+  if (!initialSessionPromptFired) {
+    initialSessionPromptFired = true
+    const st = getSettings()
+    if (st.tutor.sessionPromptEnabled) {
+      setTimeout(() => {
+        const s = getSettings()
+        if (!tickTimer || !s.tutor.enabled || !s.tutor.sessionPromptEnabled) return
+        if (isSessionPromptWindowOpen()) return
+        showSessionPromptWindow()
+        logEvent('session-prompt', null, null, 'app-open')
+      }, 1500) // 等主窗/托盘就绪,避免开场焦点互抢
+    }
+  }
   console.log('[supervision] started')
 }
 
