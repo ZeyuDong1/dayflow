@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import type { AppActivity, Project, TaskActivity, TimelineCard } from '@shared/types'
 import type { CardScreenshot, DayData } from '../../../preload/index'
 import { addDays, clockFromTs, dayKeyLabel, formatDuration, parseDayKey } from '../lib/format'
@@ -16,7 +16,8 @@ function ProjectTree({
   onCreate,
   onDelete,
   onColor,
-  onOpen,
+  onFilter,
+  filterId,
   expanded,
   toggleExpand
 }: {
@@ -26,7 +27,8 @@ function ProjectTree({
   onCreate: (title: string, parentId: number | null) => void
   onDelete: (id: number) => void
   onColor: (id: number, color: string) => void
-  onOpen: (id: number) => void
+  onFilter: (id: number | null) => void
+  filterId: number | null
   expanded: Set<number>
   toggleExpand: (id: number) => void
 }): React.ReactElement {
@@ -42,7 +44,7 @@ function ProjectTree({
     return (
       <div key={p.id}>
         <div
-          className="project-row"
+          className={`project-row${filterId === p.id ? ' filter-active' : ''}`}
           style={{ paddingLeft: 8 + depth * 14 }}
           onDragOver={(e) => {
             e.preventDefault()
@@ -71,11 +73,11 @@ function ProjectTree({
           />
           <span
             className="project-title"
-            title={`${p.title} · 点击查看类型详情`}
+            title={`${p.title} · 点击过滤该类型活动`}
             style={{ cursor: 'pointer' }}
             onClick={(e) => {
               e.stopPropagation()
-              onOpen(p.id)
+              onFilter(filterId === p.id ? null : p.id)
             }}
           >
             {p.title}
@@ -594,6 +596,7 @@ function TimingAxis({
   projects,
   colorOf,
   onSelect,
+  onTimePick,
   selected,
   onAddManual,
   icons,
@@ -608,6 +611,7 @@ function TimingAxis({
   projects: Project[]
   colorOf: (id: number | null) => string
   onSelect: (a: AppActivity | null) => void
+  onTimePick?: (start: number, end: number) => void
   segments: Record<number, { segStart: number; segEnd: number; score: number }[]>
   selected: AppActivity | null
   onAddManual: (minute: number) => void
@@ -804,6 +808,7 @@ function TimingAxis({
                 onClick={(e) => {
                   e.stopPropagation()
                   onSelect(rep && selected?.id === rep.id ? null : rep)
+                  onTimePick?.(rep.startTs, rep.endTs)
                 }}
               >
                 {showIcons && (
@@ -909,15 +914,13 @@ export default function ActivitiesView({
   setDay,
   today,
   projects,
-  onDataChanged,
-  onOpenProject
+  onDataChanged
 }: {
   day: string
   setDay: (d: string) => void
   today: string
   projects: Project[]
   onDataChanged: () => void
-  onOpenProject: (id: number) => void
 }): React.ReactElement {
   const [view, setView] = useState<'unified' | 'category' | 'chrono' | 'cards'>('category')
   const [query, setQuery] = useState('')
@@ -936,6 +939,9 @@ export default function ActivitiesView({
   const [focusSessions, setFocusSessions] = useState<{ id: number; taskId: number | null; title: string; startTs: number; endTs: number; color: string }[]>([])
   const [sessionRatios, setSessionRatios] = useState<Record<number, number | null>>({})
   const [segByHistory, setSegByHistory] = useState<Record<number, { segStart: number; segEnd: number; score: number }[]>>({})
+  // 过滤器:左侧类型列表点击=按类型过滤;右栏时间块点击=按时间段过滤
+  const [typeFilterId, setTypeFilterId] = useState<number | null>(null)
+  const [timeFilter, setTimeFilter] = useState<{ start: number; end: number } | null>(null)
   const [treeExpanded, setTreeExpanded] = useState<Set<number>>(new Set())
   const [ruleDraft, setRuleDraft] = useState<{
     projectId: number
@@ -1071,13 +1077,43 @@ export default function ActivitiesView({
     return app.toLowerCase().includes(q) || title.toLowerCase().includes(q)
   }
 
-  const filteredActivities = activities.filter((a) => matchQuery(a.appName, a.title))
-  const filteredCards = cards.filter(
-    (c) =>
-      !query.trim() ||
-      c.title.toLowerCase().includes(query.toLowerCase()) ||
-      c.summary.toLowerCase().includes(query.toLowerCase())
+  // 类型过滤含子类型;时间过滤=活动与时段有交集
+  const typeFilterIds = useMemo(() => {
+    if (typeFilterId == null) return null
+    const ids = new Set<number>([typeFilterId])
+    let grew = true
+    while (grew) {
+      grew = false
+      for (const p of projects) {
+        if (p.parentId != null && ids.has(p.parentId) && !ids.has(p.id)) {
+          ids.add(p.id)
+          grew = true
+        }
+      }
+    }
+    return ids
+  }, [typeFilterId, projects])
+  const filteredActivities = activities.filter(
+    (a) =>
+      matchQuery(a.appName, a.title) &&
+      (typeFilterIds == null || typeFilterIds.has(a.projectId ?? -1)) &&
+      (timeFilter == null || (a.startTs < timeFilter.end && a.endTs > timeFilter.start))
   )
+  const filteredCards = cards.filter((c) => {
+    if (query.trim()) {
+      if (
+        !c.title.toLowerCase().includes(query.toLowerCase()) &&
+        !c.summary.toLowerCase().includes(query.toLowerCase())
+      )
+        return false
+    }
+    if (typeFilterIds != null) {
+      const catId = projects.find((p) => p.title === c.category)?.id ?? -1
+      if (!typeFilterIds.has(catId)) return false
+    }
+    if (timeFilter != null && !(c.startTs < timeFilter.end && c.endTs > timeFilter.start)) return false
+    return true
+  })
 
   const totalMin = activities.reduce((a, x) => a + (x.endTs - x.startTs), 0) / 60000
 
@@ -1226,7 +1262,63 @@ export default function ActivitiesView({
         )}
 
         <div className="act-body">
+        <div className="act-tree-side">
+          <div className="act-tree-title">
+            类型列表
+            {typeFilterId != null && (
+              <button className="act-tree-all" onClick={() => setTypeFilterId(null)}>
+                显示全部
+              </button>
+            )}
+          </div>
+          <ProjectTree
+            projects={projects}
+            activities={filteredActivities}
+            onAssign={onTreeAssign}
+            onCreate={(title, parentId) => {
+              void window.dayflow
+                .createProject({ title, parentId, productivityScore: 4 })
+                .then(() => {
+                  load()
+                  onDataChanged()
+                })
+            }}
+            onDelete={(id) => {
+              void window.dayflow.deleteProject(id).then(() => {
+                load()
+                onDataChanged()
+              })
+            }}
+            onColor={(id, color) => {
+              void window.dayflow.updateProject(id, { color }).then(() => onDataChanged())
+            }}
+            onFilter={(id) => setTypeFilterId(id)}
+            filterId={typeFilterId}
+            expanded={treeExpanded}
+            toggleExpand={toggleTreeExpand}
+          />
+        </div>
         <div className="act-content">
+        {(typeFilterId != null || timeFilter != null) && (
+          <div className="act-filterbar">
+            <span className="act-filterhint">过滤中：</span>
+            {typeFilterId != null && (
+              <span className="act-filterchip">
+                类型 {projects.find((p) => p.id === typeFilterId)?.title ?? typeFilterId}
+                <button onClick={() => setTypeFilterId(null)}>✕</button>
+              </span>
+            )}
+            {timeFilter != null && (
+              <span className="act-filterchip">
+                时间 {clockFromTs(timeFilter.start)}–{clockFromTs(timeFilter.end)}
+                <button onClick={() => setTimeFilter(null)}>✕</button>
+              </span>
+            )}
+            <button className="act-filterclear" onClick={() => { setTypeFilterId(null); setTimeFilter(null) }}>
+              清除
+            </button>
+          </div>
+        )}
           {view === 'category' && (
             <ActivityTree activities={filteredActivities} tasks={dayTasks} projects={projects} colorOf={projectColor} icons={appIcons} />
           )}
@@ -1411,7 +1503,7 @@ export default function ActivitiesView({
       {/* ================= 右栏：全局时间轴（LOD） ================= */}
       <div className="act-gantt">
         <TimingAxis
-          activities={filteredActivities}
+          activities={activities}
           tasks={dayTasks}
           day={day}
           today={today}
@@ -1419,6 +1511,9 @@ export default function ActivitiesView({
           colorOf={projectColor}
           icons={appIcons}
           onSelect={setSelectedActivity}
+          onTimePick={(start, end) =>
+            setTimeFilter((prev) => (prev && prev.start === start && prev.end === end ? null : { start, end }))
+          }
           selected={selectedActivity}
           onAddManual={(minute) => setManualDraft({ minute, title: '', dur: 30 })}
           sessions={focusSessions}
