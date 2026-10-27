@@ -76,11 +76,21 @@ function finalizeSegment(seg: OpenSegment, endTs: number): void {
   // incognito tabs are absent from history and resolve to nothing.
   if (isBrowserApp(seg.appName)) {
     void lookupPageUrl(seg.appName, seg.title).then((url) => {
-      if (url) {
-        db.run('UPDATE app_activities SET url_or_path = ? WHERE id = ? AND url_or_path IS NULL', [
-          url,
-          seg.dbId
-        ])
+      if (!url) return
+      db.run('UPDATE app_activities SET url_or_path = ? WHERE id = ? AND url_or_path IS NULL', [
+        url,
+        seg.dbId
+      ])
+      // URL 到手后用完整三元组重分类(网址规则此时才能命中);
+      // 只覆盖规则/未归类结果,用户手动指定的不动。
+      const row = db.get<{ project_id: number | null; is_manual: number }>(
+        'SELECT project_id, is_manual FROM app_activities WHERE id = ?',
+        [seg.dbId]
+      )
+      if (!row || row.is_manual === 1) return
+      const reclassified = classifyActivity(seg.appName, seg.title, url)
+      if (reclassified !== row.project_id) {
+        db.run('UPDATE app_activities SET project_id = ? WHERE id = ?', [reclassified, seg.dbId])
       }
     })
   }
@@ -149,11 +159,12 @@ async function poll(): Promise<void> {
     // 前台切换：收尾旧段，打开新段（立即落库 + 归类 + LLM 兜底）
     if (open) finalizeSegment(open, now)
     const segTitle = isPrivateApp(fg.appName, title) ? '（隐私应用，标题已隐藏）' : title
-    const projectId = classifyActivity(fg.appName, segTitle)
+    const segUrl = extractUrlOrPath(segTitle)
+    const projectId = classifyActivity(fg.appName, segTitle, segUrl)
     db.run(
       `INSERT INTO app_activities (start_ts, end_ts, app_name, title, url_or_path, project_id, is_manual, is_deleted, is_idle)
        VALUES (?, ?, ?, ?, ?, ?, 0, 0, 0)`,
-      [now, now + 2000, fg.appName, segTitle, extractUrlOrPath(segTitle), projectId]
+      [now, now + 2000, fg.appName, segTitle, segUrl, projectId]
     )
     const dbId = (db.get<{ id: number }>('SELECT last_insert_rowid() AS id') ?? { id: 0 }).id
     open = { dbId, appName: fg.appName, title: segTitle, startTs: now, lastSeenTs: now, maxIdleSec: idleSec }

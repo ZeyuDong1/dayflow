@@ -335,15 +335,16 @@ function ActivityTree({
         style={{ paddingLeft: 10 + node.depth * 26 }}
         onClick={() => hasKids && toggle(node)}
         draggable={node.depth > 0}
-        onDragStart={(e) => {
-          dragState.current = {
-            kind: node.depth === 2 ? 'row' : 'band',
-            ids: node.ids,
-            appName: node.depth >= 1 ? (node.app ?? node.label) : node.label,
-            title: node.depth === 2 ? node.label : ''
-          }
-          e.dataTransfer?.setData('text/plain', node.ids.join(','))
-        }}
+                onDragStart={(e) => {
+                  dragState.current = {
+                    kind: node.depth === 2 ? 'row' : 'band',
+                    ids: node.ids,
+                    appName: node.depth >= 1 ? (node.app ?? node.label) : node.label,
+                    title: node.depth === 2 ? node.label : '',
+                    url: activities.find((a) => a.urlOrPath && node.ids.includes(a.id))?.urlOrPath ?? undefined
+                  }
+                  e.dataTransfer?.setData('text/plain', node.ids.join(','))
+                }}
       >
           <span className="atr-dur">{fmtDur(node.minutes)}</span>
           <span className="atr-chev">{hasKids ? (open ? '⌄' : '⮕') : ''}</span>
@@ -947,7 +948,7 @@ export default function ActivitiesView({
   const [ruleDraft, setRuleDraft] = useState<{
     projectId: number
     projectName: string
-    field: 'app' | 'title'
+    field: 'app' | 'title' | 'urlOrPath'
     value: string
     ids: number[]
   } | null>(null)
@@ -1039,16 +1040,30 @@ export default function ActivitiesView({
     })
   }
 
-  // 类型树投放:列表行(title 拖动)= 弹窗建规则;时间轴块 = 直接归类,Alt = 建规则
+  // 类型树投放:列表行(title 拖动)= 弹窗建规则;时间轴块 = 直接归类,Alt = 建规则。
+  // 浏览器活动带已解析网址时,预填「网址包含 域名」——标题分不清的站内页面靠网址分。
   const onTreeAssign = (projectId: number, alt: boolean): void => {
     const d = dragState.current
     if (!d) return
     if (alt || d.kind === 'row') {
+      let field: 'app' | 'title' | 'urlOrPath' = d.kind === 'row' ? 'title' : 'app'
+      let value = d.kind === 'row' ? d.title : d.appName
+      if (d.url) {
+        try {
+          const host = new URL(d.url).hostname.replace(/^www\./, '')
+          if (host) {
+            field = 'urlOrPath'
+            value = host
+          }
+        } catch {
+          // 非法 URL(如文件路径)保持 title 预填
+        }
+      }
       setRuleDraft({
         projectId,
         projectName: projects.find((p) => p.id === projectId)?.title ?? '',
-        field: d.kind === 'row' ? 'title' : 'app',
-        value: d.kind === 'row' ? d.title : d.appName,
+        field,
+        value,
         ids: d.ids,
       })
       dragState.current = null
@@ -1333,7 +1348,7 @@ export default function ActivitiesView({
                   style={{ paddingLeft: 12 }}
                   draggable
                   onDragStart={(e) => {
-                    dragState.current = { kind: 'row', ids: [a.id], appName: a.appName, title: a.title }
+                    dragState.current = { kind: 'row', ids: [a.id], appName: a.appName, title: a.title, url: a.urlOrPath ?? undefined }
                     e.dataTransfer?.setData('text/plain', String(a.id))
                   }}
                   onClick={() => setSelectedActivity(a)}
@@ -1428,10 +1443,11 @@ export default function ActivitiesView({
               <div className="settings-row-label">匹配字段</div>
               <select
                 value={ruleDraft.field}
-                onChange={(e) => setRuleDraft({ ...ruleDraft, field: e.target.value as 'app' | 'title' })}
+                onChange={(e) => setRuleDraft({ ...ruleDraft, field: e.target.value as 'app' | 'title' | 'urlOrPath' })}
               >
                 <option value="app">应用名包含</option>
                 <option value="title">窗口标题包含</option>
+                <option value="urlOrPath">网址包含</option>
               </select>
             </div>
             <div className="settings-row">

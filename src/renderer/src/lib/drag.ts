@@ -4,6 +4,8 @@ export interface DragGroup {
   ids: number[]
   appName: string
   title: string
+  /** 浏览器活动已解析的页面地址;有值时建规则可走网址匹配 */
+  url?: string
 }
 
 export const dragState: { current: DragGroup | null } = { current: null }

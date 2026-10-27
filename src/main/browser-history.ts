@@ -41,15 +41,32 @@ function firstExisting(paths: string[]): string | null {
 }
 
 function firefoxProfileDir(): string | null {
-  const root = path.join(ROAMING, 'Mozilla', 'Firefox', 'Profiles')
+  // 各衍生浏览器的 profile 命名不一致(Zen 是「xxx.Default (release)」),
+  // 名字启发式不可靠——直接取 places.sqlite mtime 最新的目录=最近在用的 profile。
+  return newestHistoryIn(path.join(ROAMING, 'Mozilla', 'Firefox', 'Profiles'), 'places.sqlite')
+}
+
+/**
+ * 在 profile 根目录下找"活跃"的 profile:遍历所有含目标历史库的子目录,
+ * 取历史库 mtime 最新的那个(名字规则在衍生浏览器上各不相同,靠不住)。
+ */
+function newestHistoryIn(root: string, file: string): string | null {
+  let best: { p: string; mt: number } | null = null
   try {
-    const dirs = fs.readdirSync(root).filter((d) => /default/i.test(d))
-    // prefer *default-release*
-    const preferred = dirs.find((d) => /default-release/i.test(d)) ?? dirs[0]
-    return preferred ? path.join(root, preferred) : null
+    for (const dir of fs.readdirSync(root)) {
+      const cand = path.join(root, dir, file)
+      try {
+        if (!fs.existsSync(cand)) continue
+        const mt = fs.statSync(cand).mtimeMs
+        if (!best || mt > best.mt) best = { p: cand, mt }
+      } catch {
+        // ignore
+      }
+    }
   } catch {
-    return null
+    // ignore
   }
+  return best?.p ?? null
 }
 
 function buildProfiles(): BrowserProfile[] {
@@ -79,24 +96,12 @@ function buildProfiles(): BrowserProfile[] {
     path.join(ROAMING, 'Opera Software', 'Opera Stable', 'History'),
     path.join(LOCAL, 'Opera Software', 'Opera Stable', 'History')
   ])
-  // Zen Browser is a Firefox fork: scan its profile dirs for places.sqlite.
-  let zenPath: string | null = null
-  try {
-    const zenRoot = path.join(ROAMING, 'zen', 'Profiles')
-    if (fs.existsSync(zenRoot)) {
-      const dir = fs
-        .readdirSync(zenRoot)
-        .filter((d) => /default/i.test(d))
-        .sort((a, b) => Number(/default-release/i.test(b)) - Number(/default-release/i.test(a)))[0]
-      if (dir) {
-        const cand = path.join(zenRoot, dir, 'places.sqlite')
-        zenPath = fs.existsSync(cand) ? cand : null
-      }
-    }
-  } catch {
-    // ignore
-  }
-  profiles.push({ apps: ['zen'], historyPath: zenPath, kind: 'firefox' })
+  // Zen Browser is a Firefox fork: pick its most recently used profile by history mtime.
+  profiles.push({
+    apps: ['zen'],
+    historyPath: newestHistoryIn(path.join(ROAMING, 'zen', 'Profiles'), 'places.sqlite'),
+    kind: 'firefox'
+  })
   const ffDir = firefoxProfileDir()
   profiles.push({
     apps: ['firefox'],

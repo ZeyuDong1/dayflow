@@ -305,7 +305,7 @@ export interface ClassifyMatch {
   matched: string
 }
 
-const FIELD_LABEL: Record<string, string> = { app: '应用', title: '标题', urlOrPath: '路径' }
+const FIELD_LABEL: Record<string, string> = { app: '应用', title: '标题', urlOrPath: '网址/路径' }
 const OP_LABEL: Record<string, string> = { contains: '含', equals: '=', startsWith: '以…开头', regex: '正则' }
 
 function summarizeNode(n: RuleNode): string {
