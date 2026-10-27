@@ -29,7 +29,7 @@ function unclassifiedItems(days = 7): GroupItem[] {
   const rows = db.all<{ app_name: string; title: string; ms: number }>(
     `SELECT app_name, title, SUM(end_ts - start_ts) AS ms
      FROM app_activities
-     WHERE is_deleted = 0 AND project_id IS NULL AND start_ts >= ?
+     WHERE is_deleted = 0 AND is_idle = 0 AND project_id IS NULL AND start_ts >= ?
      GROUP BY app_name, title
      ORDER BY ms DESC
      LIMIT 120`,

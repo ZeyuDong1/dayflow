@@ -284,7 +284,7 @@ class DB {
     this.flushTimer = setTimeout(() => {
       this.flushTimer = null
       this.flush()
-    }, 2000)
+    }, 5000)
   }
 
   flush(): void {
