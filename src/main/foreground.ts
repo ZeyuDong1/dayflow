@@ -122,6 +122,19 @@ export function isWindowUsable(hwnd: number): boolean {
   }
 }
 
+/** hwnd → 当前窗口标题(强打断面板实时显示被遮页面的 title;窗口已亡/无标题返回 null)。 */
+export function getWindowTitleByHwnd(hwnd: number): string | null {
+  try {
+    if (!IsWindow(hwnd)) return null
+    const buf = new Uint16Array(512)
+    GetWindowTextW(hwnd, buf, 512)
+    const t = Buffer.from(buf.buffer).toString('utf16le').replace(/\0.*$/, '')
+    return t || null
+  } catch {
+    return null
+  }
+}
+
 /** 最小化窗口(等价标题栏最小化按钮,SW_MINIMIZE=6)。强打断面板的"放它一马"出口。 */
 export function minimizeWindow(hwnd: number): boolean {
   try {

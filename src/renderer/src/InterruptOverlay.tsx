@@ -26,6 +26,9 @@ interface InterruptState {
   goal?: string
   appName?: string
   title?: string
+  /** 被遮窗口此刻的标题/网址(实时刷新;关闭网页换标签后能看清底下是什么) */
+  targetTitle?: string | null
+  targetUrl?: string | null
   devMinutes?: number
   breakMinutes?: number
   allowBreak?: boolean
@@ -200,6 +203,18 @@ export default function InterruptOverlay(): React.ReactElement {
                 {state.targetIsBrowser ? '关闭网页' : '关闭它'}
               </button>
             </div>
+            {state.targetTitle && (
+              <div className="itx-target">
+                <span className="itx-target-title" title={state.targetTitle}>
+                  {state.targetTitle}
+                </span>
+                {state.targetUrl && (
+                  <span className="itx-target-url" title={state.targetUrl}>
+                    {state.targetUrl}
+                  </span>
+                )}
+              </div>
+            )}
             <div className="itx-hint">面板盖住了这个应用,最小化/关闭请用上面的按钮,提示会自动消失。</div>
           </>
         )}

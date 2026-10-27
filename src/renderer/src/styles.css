@@ -1535,6 +1535,34 @@ label.field {
   flex-wrap: wrap;
 }
 
+/* 被遮窗口此刻的 title/网址(实时刷新,关闭网页换标签后能看清底下是什么) */
+.itx-target {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.03);
+  min-width: 0;
+}
+.itx-target-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.itx-target-url {
+  font-size: 11px;
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* ===== 会话开始询问窗（#/session） ===== */
 .sp-root {
   width: 100vw; height: 100vh; box-sizing: border-box; padding: 8px;

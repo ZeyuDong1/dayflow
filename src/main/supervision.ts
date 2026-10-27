@@ -3,18 +3,20 @@ import path from 'path'
 import { getSettings } from './settings'
 import { todayKey } from './paths'
 import { db } from './db'
-import { classifyActivity, classifyActivityDetail, listProjects } from './projects'
+import { classifyActivity, classifyActivityDetail, isBrowserApp, listProjects } from './projects'
 import {
   closeTabInWindow,
   closeWindow,
   getForegroundInfoSync,
   getWindowGeom,
+  getWindowTitleByHwnd,
   isBrowserWindow,
   isWindowUsable,
   minimizeWindow,
   type ForegroundInfo,
   type WindowGeom
 } from './foreground'
+import { lookupPageUrl } from './browser-history'
 import {
   buildNudgeFallback,
   getCachedNudge,
@@ -361,12 +363,35 @@ function showInterrupt(ep: Episode, geom: WindowGeom): void {
   const targetHwnd = ep.hwnd
   const targetPid = ep.pid
   let awayStrikes = 0
+  // 实时显示被遮窗口的 title/网址:点"关闭网页"后面板还盖着,不显示的话
+  // 用户不知道现在底下是哪个页面(浏览器同窗口换标签 hwnd 不变,只能轮询标题)
+  let liveTargetTitle = ''
+  let liveTargetUrl: string | null = null
   overlayTimer = setInterval(() => {
     if (!interruptWin || interruptWin.isDestroyed()) return
     if (!isWindowUsable(targetHwnd)) {
       logEvent('interrupt-auto-close', ep.appName, ep.title, '违规窗口已最小化/关闭')
       closeInterrupt()
       return
+    }
+    const liveTitle = getWindowTitleByHwnd(targetHwnd)
+    if (liveTitle && liveTitle !== liveTargetTitle) {
+      liveTargetTitle = liveTitle
+      liveTargetUrl = null
+      const pushLive = (): void => {
+        if (!interruptWin || interruptWin.isDestroyed()) return
+        lastPayload = { ...(lastPayload ?? {}), targetTitle: liveTargetTitle, targetUrl: liveTargetUrl }
+        interruptWin.webContents.send('supervision:interrupt', lastPayload)
+      }
+      pushLive()
+      if (isBrowserApp(ep.appName)) {
+        void lookupPageUrl(ep.appName, liveTitle).then((url) => {
+          // 查询期间标题又变了就丢弃这轮结果(下一轮会用新标题重查)
+          if (liveTargetTitle !== liveTitle) return
+          liveTargetUrl = url
+          pushLive()
+        })
+      }
     }
     // 跟随目标窗口 + 纠偏:目标几何变了(拖动/缩放/最大化)→ 面板跟上;
     // 目标没变而面板边界偏离意图(如 DPI 变更被系统改写)→ 纠正回来
@@ -424,6 +449,8 @@ async function interruptPayload(ep: Episode): Promise<Record<string, unknown>> {
     goal: settings.tutor.goal,
     appName: ep.appName,
     title: ep.title,
+    targetTitle: ep.title,
+    targetUrl: null as string | null,
     devMinutes: Math.round(devMinutes),
     breakMinutes: settings.tutor.breakMinutes,
     allowBreak: settings.tutor.allowBreak,
