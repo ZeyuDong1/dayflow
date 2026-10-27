@@ -310,9 +310,6 @@ export function registerIpc(win: BrowserWindow): void {
       return { ok: false, error: err instanceof Error ? err.message : String(err) }
     }
   })
-  ipcMain.handle('review:applyGroup', (_e, group: groupMod.AiGroup, projectId: number) =>
-    groupMod.applyAiGroup(group, projectId)
-  )
 
   ipcMain.handle('tasks:range', (_e, startTs: number, endTs: number) => tasksMod.listTasks(startTs, endTs))
   ipcMain.handle('tasks:start', (_e, title: string, projectId: number | null, billable: boolean) =>

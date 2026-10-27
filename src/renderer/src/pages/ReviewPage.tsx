@@ -17,6 +17,14 @@ interface DraftState {
   projectId: number | null
 }
 
+/** AI 预构建规则草稿：用户逐条判断后才写入。 */
+interface RuleDraft {
+  enabled: boolean
+  appName: string
+  titleKw: string
+  projectId: number | null
+}
+
 export default function ReviewPage({ focusProjectId }: { focusProjectId?: number | null }): React.ReactElement {
   const [groups, setGroups] = useState<RuleSuggestionItem[]>([])
   const [projects, setProjects] = useState<Project[]>([])
@@ -25,6 +33,8 @@ export default function ReviewPage({ focusProjectId }: { focusProjectId?: number
   const [status, setStatus] = useState('')
   const [aiGroups, setAiGroups] = useState<AiGroupView[] | null>(null)
   const [aiLoading, setAiLoading] = useState(false)
+  const [ruleReview, setRuleReview] = useState<{ name: string; drafts: RuleDraft[] } | null>(null)
+  const [reviewBusy, setReviewBusy] = useState(false)
 
   const load = useCallback(() => {
     void window.dayflow.reviewUnclassified().then(setGroups)
@@ -93,14 +103,51 @@ export default function ReviewPage({ focusProjectId }: { focusProjectId?: number
     })
   }
 
-  const applyGroup = (g: AiGroupView, projectId: number): void => {
-    void window.dayflow.applyAiGroup(g, projectId).then((n) => {
-      setStatus(
-        `「${g.name}」整组归类完成：${n} 段活动归入 ${projects.find((p) => p.id === projectId)?.title ?? ''}`
-      )
-      setAiGroups((prev) => (prev ? prev.filter((x) => x !== g) : prev))
-      load()
+  /** AI 分组应用改为人工把关:先弹预构建规则草稿,勾选/修改后才创建。 */
+  const openRuleReview = (g: AiGroupView, projectId: number | null): void => {
+    const fallback = projectId ?? g.projectId ?? projects[0]?.id ?? null
+    setRuleReview({
+      name: g.name,
+      drafts: g.items.map((it) => ({
+        enabled: true,
+        appName: it.appName,
+        titleKw: it.titlePattern,
+        projectId: fallback
+      }))
     })
+  }
+
+  const patchDraft = (index: number, patch: Partial<RuleDraft>): void =>
+    setRuleReview((prev) =>
+      prev ? { ...prev, drafts: prev.drafts.map((d, i) => (i === index ? { ...d, ...patch } : d)) } : prev
+    )
+
+  const confirmRules = async (): Promise<void> => {
+    if (!ruleReview) return
+    const picks = ruleReview.drafts.filter(
+      (d) => d.enabled && d.projectId != null && (d.appName.trim() || d.titleKw.trim())
+    )
+    if (picks.length === 0) {
+      setStatus('没有可创建的规则：至少勾选一条，且填写条件并选择目标类型')
+      return
+    }
+    setReviewBusy(true)
+    try {
+      let applied = 0
+      for (const d of picks) {
+        const children: RuleNode[] = []
+        if (d.appName.trim()) children.push({ kind: 'cond', field: 'app', op: 'equals', value: d.appName.trim() })
+        if (d.titleKw.trim()) children.push({ kind: 'cond', field: 'title', op: 'contains', value: d.titleKw.trim() })
+        const res = await window.dayflow.createRule(d.projectId ?? 0, { kind: 'all', children })
+        applied += res.appliedCount
+      }
+      setStatus(`已创建 ${picks.length} 条规则，回溯归类 ${applied} 段活动`)
+      setAiGroups((prev) => (prev ? prev.filter((x) => x.name !== ruleReview.name) : prev))
+      setRuleReview(null)
+      load()
+    } finally {
+      setReviewBusy(false)
+    }
   }
 
   const quickAssign = (g: RuleSuggestionItem, projectId: number): void => {
@@ -186,16 +233,16 @@ export default function ReviewPage({ focusProjectId }: { focusProjectId?: number
               </div>
               <div className="ai-group-actions">
                 {g.projectId !== null ? (
-                  <button className="btn small primary" onClick={() => applyGroup(g, g.projectId!)}>
-                    按建议归入「{g.projectTitle}」
+                  <button className="btn small primary" onClick={() => openRuleReview(g, g.projectId)}>
+                    预览规则并归入「{g.projectTitle}」
                   </button>
                 ) : (
-                  <span className="field-help">AI 未找到匹配项目，请手动选择：</span>
+                  <span className="field-help">AI 未找到匹配项目，请选择类型后预览规则：</span>
                 )}
                 <select
                   defaultValue=""
                   onChange={(e) => {
-                    if (e.target.value !== '') applyGroup(g, Number(e.target.value))
+                    if (e.target.value !== '') openRuleReview(g, Number(e.target.value))
                     e.currentTarget.value = ''
                   }}
                   style={{ maxWidth: 170 }}
@@ -327,6 +374,70 @@ export default function ReviewPage({ focusProjectId }: { focusProjectId?: number
           </div>
         ))}
       </div>
+
+      {ruleReview && (
+        <div className="modal-backdrop" onClick={() => !reviewBusy && setRuleReview(null)}>
+          <div className="modal" style={{ maxWidth: 760, width: '92vw' }} onClick={(e) => e.stopPropagation()}>
+            <h2>AI 预构建规则——「{ruleReview.name}」</h2>
+            <p className="modal-sub">
+              逐条判断：勾选要生效的规则，应用名/关键词/目标类型均可修改。确认后创建规则并回溯归类历史，未勾选的不会写入。
+            </p>
+            <div style={{ maxHeight: '52vh', overflowY: 'auto' }}>
+              {ruleReview.drafts.map((d, i) => {
+                const invalid = !d.appName.trim() && !d.titleKw.trim()
+                return (
+                  <div className="review-row" key={i} style={{ opacity: d.enabled ? 1 : 0.45 }}>
+                    <input
+                      type="checkbox"
+                      checked={d.enabled}
+                      onChange={(e) => patchDraft(i, { enabled: e.target.checked })}
+                    />
+                    <div className="review-main" style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <input
+                        value={d.appName}
+                        placeholder="应用名等于…"
+                        onChange={(e) => patchDraft(i, { appName: e.target.value })}
+                        style={{ width: 130, padding: '5px 8px', borderRadius: 8, border: '1px solid var(--border-strong)' }}
+                      />
+                      <span className="field-help" style={{ margin: 0 }}>
+                        且 标题含
+                      </span>
+                      <input
+                        value={d.titleKw}
+                        placeholder="标题包含…"
+                        onChange={(e) => patchDraft(i, { titleKw: e.target.value })}
+                        style={{ flex: 1, minWidth: 160, padding: '5px 8px', borderRadius: 8, border: '1px solid var(--border-strong)' }}
+                      />
+                      {invalid && <span className="field-help">条件为空，创建时会跳过</span>}
+                    </div>
+                    <select
+                      value={String(d.projectId ?? '')}
+                      onChange={(e) => patchDraft(i, { projectId: e.target.value === '' ? null : Number(e.target.value) })}
+                      style={{ maxWidth: 150 }}
+                    >
+                      <option value="">归入类型…</option>
+                      {flatProjects().map(({ p, depth }) => (
+                        <option key={p.id} value={p.id}>
+                          {'　'.repeat(depth)}
+                          {p.title}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )
+              })}
+            </div>
+            <div className="modal-actions">
+              <button className="btn primary" disabled={reviewBusy} onClick={() => void confirmRules()}>
+                {reviewBusy ? '创建中…' : `创建选中的规则（${ruleReview.drafts.filter((d) => d.enabled).length} 条）并回溯归类`}
+              </button>
+              <button className="btn ghost" disabled={reviewBusy} onClick={() => setRuleReview(null)}>
+                全部不要
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

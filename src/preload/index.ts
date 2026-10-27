@@ -174,11 +174,6 @@ const api = {
     }[]
     error?: string
   }> => ipcRenderer.invoke('review:aiGroup', days),
-  applyAiGroup: (
-    group: { name: string; reason: string; projectId: number | null; projectTitle: string | null; items: { appName: string; titlePattern: string; totalMinutes: number }[]; totalMinutes: number },
-    projectId: number
-  ): Promise<number> => ipcRenderer.invoke('review:applyGroup', group, projectId),
-
   listTasks: (startTs: number, endTs: number): Promise<TaskActivity[]> =>
     ipcRenderer.invoke('tasks:range', startTs, endTs),
   startTask: (title: string, projectId: number | null, billable: boolean): Promise<TaskActivity> =>

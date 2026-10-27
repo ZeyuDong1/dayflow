@@ -98,29 +98,3 @@ ${projects.map((p) => `- id=${p.id}: ${p.title}`).join('\n')}
   }
   return groups
 }
-
-/** Apply a group: bulk-assign every item in it to the chosen project. */
-export function applyAiGroup(group: AiGroup, projectId: number): number {
-  let n = 0
-  for (const it of group.items) {
-    const rows = db.all<{ id: number; title: string }>(
-      `SELECT id, title FROM app_activities
-       WHERE is_deleted = 0 AND app_name = ? AND (project_id IS NULL OR is_manual = 0)`,
-      [it.appName]
-    )
-    for (const r of rows) {
-      const pat = titlePattern(r.title ?? '')
-      if (pat === it.titlePattern || pat.startsWith(it.titlePattern) || (r.title ?? '').includes(it.titlePattern)) {
-        db.run('UPDATE app_activities SET project_id = ?, is_manual = 1 WHERE id = ?', [projectId, r.id])
-        n++
-      }
-    }
-    db.run(
-      `INSERT INTO classifications (app_name, title_pattern, project_id, hits, updated_at)
-       VALUES (?, ?, ?, 1, ?)
-       ON CONFLICT(app_name, title_pattern) DO UPDATE SET project_id = excluded.project_id, hits = hits + 1, updated_at = excluded.updated_at`,
-      [it.appName, it.titlePattern, projectId, Date.now()]
-    )
-  }
-  return n
-}
