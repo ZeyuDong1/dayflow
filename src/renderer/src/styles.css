@@ -3883,8 +3883,8 @@ input[type='range']::-webkit-slider-thumb:active {
 .ow-overdue { color: #fda4af; animation: ow-breathe 2.4s ease-in-out infinite; }
 .ow-glow { text-shadow: 0 0 var(--focus-glow-radius, 6px) currentColor; animation: ow-glow  var(--focus-glow-speed, 3s) ease-in-out infinite; }
 @keyframes ow-glow {
-  0%, 100% { text-shadow: 0 0 calc(var(--focus-glow-radius, 6px) * 0.4) currentColor; }
-  50% { text-shadow: 0 0 var(--focus-glow-radius, 6px) currentColor; }
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
 }
 @keyframes ow-breathe {
   0%, 100% { opacity: 0.55; }
@@ -3907,8 +3907,11 @@ input[type='range']::-webkit-slider-thumb:active {
 }
 /* 辉光呼吸挂标题本身(淡色 prefix 不发光) */
 .ow-glow-title {
+  /* 呼吸用 opacity(合成器动画,零重绘):text-shadow 逐帧动画会持续重绘整个
+     透明置顶窗,是多窗透明场景下系统卡顿的典型来源 */
   text-shadow: 0 0 var(--focus-glow-radius, 6px) currentColor;
   animation: ow-glow var(--focus-glow-speed, 3s) ease-in-out infinite;
+  will-change: opacity;
 }
 @media (prefers-reduced-motion: reduce) {
   .ow-glow, .ow-overdue, .ow-marquee-track { animation: none !important; }
