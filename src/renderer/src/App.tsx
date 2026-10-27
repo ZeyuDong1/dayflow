@@ -170,7 +170,9 @@ export default function App(): React.ReactElement {
       setTimeout(refresh, 250)
     }
     if (alt && projectId !== null) {
-      const kw = seg.title.split(/\s+/).slice(0, 2).join(' ')
+      // 关键词取标题去尾段（如"- www.site.com/"），无分隔符时退回首两个词
+      const stripped = seg.title.replace(/[|·—–\-:：]\s*[^|·—–\-:：]*$/, '').trim()
+      const kw = stripped || seg.title.split(/\s+/).slice(0, 2).join(' ')
       void window.dayflow
         .createRule(projectId, [
           { field: 'app', op: 'equals', value: seg.appName },

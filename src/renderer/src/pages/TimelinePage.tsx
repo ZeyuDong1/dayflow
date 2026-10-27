@@ -315,6 +315,7 @@ function ActivityTree({
                     ? 'doc'
                     : 'chat') as ANode['icon'],
                 ids: T.ids,
+                app,
                 title,
                 children: []
               }))
