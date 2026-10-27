@@ -1262,42 +1262,6 @@ export default function ActivitiesView({
         )}
 
         <div className="act-body">
-        <div className="act-tree-side">
-          <div className="act-tree-title">
-            类型列表
-            {typeFilterId != null && (
-              <button className="act-tree-all" onClick={() => setTypeFilterId(null)}>
-                显示全部
-              </button>
-            )}
-          </div>
-          <ProjectTree
-            projects={projects}
-            activities={filteredActivities}
-            onAssign={onTreeAssign}
-            onCreate={(title, parentId) => {
-              void window.dayflow
-                .createProject({ title, parentId, productivityScore: 4 })
-                .then(() => {
-                  load()
-                  onDataChanged()
-                })
-            }}
-            onDelete={(id) => {
-              void window.dayflow.deleteProject(id).then(() => {
-                load()
-                onDataChanged()
-              })
-            }}
-            onColor={(id, color) => {
-              void window.dayflow.updateProject(id, { color }).then(() => onDataChanged())
-            }}
-            onFilter={(id) => setTypeFilterId(id)}
-            filterId={typeFilterId}
-            expanded={treeExpanded}
-            toggleExpand={toggleTreeExpand}
-          />
-        </div>
         <div className="act-content">
         {(typeFilterId != null || timeFilter != null) && (
           <div className="act-filterbar">
