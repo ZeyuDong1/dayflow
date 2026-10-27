@@ -1,7 +1,7 @@
 import fs from 'fs'
 import os from 'os'
 import path from 'path'
-import initSqlJs from 'sql.js'
+import { Worker } from 'worker_threads'
 import { isBrowserApp } from './projects'
 
 /**
@@ -119,46 +119,105 @@ const snapshotAt = new Map<BrowserProfile, number>()
 const REFRESH_MS = 60_000
 const MAX_ENTRIES = 800
 
+// ---------------------------------------------------------------------------
+// 历史库解析放 worker 线程:Zen 的 places.sqlite 约 10MB,整库喂给 sql.js(WASM)
+// 在主进程同步做会卡住事件循环 1-2 秒(用户实测"隔一阵鼠标卡一下"),worker 化后主
+// 进程零阻塞。worker 常驻一个,sql.js 实例只初始化一次。
+// ---------------------------------------------------------------------------
+
+const SQLJS_DIR = path.join(__dirname, '../../node_modules/sql.js/dist')
+const HISTORY_WORKER_SCRIPT = `
+const { workerData, parentPort } = require('worker_threads')
+const initSqlJs = require(workerData.sqlJsEntry)
+const fs = require('fs')
+const path = require('path')
+let SQLP = null
+parentPort.on('message', (job) => {
+  ;(async () => {
+    if (!SQLP) SQLP = initSqlJs({ locateFile: (f) => path.join(workerData.sqlJsDir, f) })
+    const SQL = await SQLP
+    const tmp = path.join(workerData.tmpDir, 'dayflow-hist-' + Math.random().toString(36).slice(2) + '.db')
+    fs.copyFileSync(job.file, tmp)
+    try {
+      const db = new SQL.Database(fs.readFileSync(tmp))
+      const rows = []
+      if (job.kind === 'chromium') {
+        const stmt = db.prepare('SELECT url, title, last_visit_time FROM urls ORDER BY last_visit_time DESC LIMIT ?')
+        stmt.bind([job.max])
+        while (stmt.step()) {
+          const r = stmt.getAsObject()
+          rows.push({ url: r.url, title: r.title || '', lastVisit: r.last_visit_time / 1000 - 11644473600000 })
+        }
+        stmt.free()
+      } else {
+        const stmt = db.prepare('SELECT url, title, last_visit_date / 1000 AS t FROM moz_places ORDER BY last_visit_date DESC LIMIT ?')
+        stmt.bind([job.max])
+        while (stmt.step()) {
+          const r = stmt.getAsObject()
+          rows.push({ url: r.url, title: r.title || '', lastVisit: Number(r.t) || 0 })
+        }
+        stmt.free()
+      }
+      db.close()
+      parentPort.postMessage({ id: job.id, ok: true, rows })
+    } finally {
+      try { fs.unlinkSync(tmp) } catch (e) {}
+    }
+  })().catch((e) => parentPort.postMessage({ id: job.id, ok: false, error: String((e && e.message) || e) }))
+})
+`
+
+let histWorker: Worker | null = null
+let histJobSeq = 0
+const histJobs = new Map<number, { resolve: (rows: HistoryEntry[]) => void; timer: NodeJS.Timeout }>()
+
+function parseHistoryInWorker(file: string, kind: 'chromium' | 'firefox'): Promise<HistoryEntry[]> {
+  return new Promise((resolve) => {
+    const done = (rows: HistoryEntry[]): void => {
+      clearTimeout(job?.timer)
+      resolve(rows)
+    }
+    let job: { timer: NodeJS.Timeout } | undefined
+    try {
+      if (!histWorker) {
+        histWorker = new Worker(HISTORY_WORKER_SCRIPT, {
+          eval: true,
+          workerData: { sqlJsDir: SQLJS_DIR, sqlJsEntry: path.join(SQLJS_DIR, 'sql-wasm.js'), tmpDir: os.tmpdir() }
+        })
+        histWorker.on('message', (msg: { id: number; ok: boolean; rows?: HistoryEntry[] }) => {
+          const pending = histJobs.get(msg.id)
+          if (!pending) return
+          histJobs.delete(msg.id)
+          pending.resolve(msg.ok ? msg.rows ?? [] : [])
+        })
+        histWorker.on('error', () => {
+          // worker 挂了:在途任务全部按空处理,下次调用重建
+          for (const [, pending] of histJobs) pending.resolve([])
+          histJobs.clear()
+          histWorker = null
+        })
+      }
+      const id = ++histJobSeq
+      const timer = setTimeout(() => {
+        histJobs.delete(id)
+        resolve([])
+      }, 20_000)
+      job = { timer }
+      histJobs.set(id, { resolve: done, timer })
+      histWorker.postMessage({ id, file, kind, max: MAX_ENTRIES })
+    } catch {
+      resolve([])
+    }
+  })
+}
+
 async function refreshSnapshot(profile: BrowserProfile): Promise<void> {
   if (!profile.historyPath) return
   const now = Date.now()
   if (now - (snapshotAt.get(profile) ?? 0) < REFRESH_MS && snapshots.has(profile)) return
-  snapshotAt.set(profile, now)
+  snapshotAt.set(profile, now) // 先记账防并发重复派发;失败按空快照,下轮再试
   try {
-    const tmp = path.join(os.tmpdir(), `dayflow-hist-${Math.random().toString(36).slice(2)}.db`)
-    fs.copyFileSync(profile.historyPath, tmp)
-    const SQL = await initSqlJs({
-      locateFile: (f) => path.join(__dirname, '../../node_modules/sql.js/dist', f)
-    })
-    const db = new SQL.Database(fs.readFileSync(tmp))
-    let rows: HistoryEntry[] = []
-    if (profile.kind === 'chromium') {
-      const stmt = db.prepare(
-        `SELECT url, title, last_visit_time FROM urls ORDER BY last_visit_time DESC LIMIT ?`
-      )
-      stmt.bind([MAX_ENTRIES])
-      while (stmt.step()) {
-        const r = stmt.getAsObject() as { url: string; title: string; last_visit_time: number }
-        rows.push({ url: r.url, title: r.title ?? '', lastVisit: r.last_visit_time / 1000 - 11644473600000 })
-      }
-      stmt.free()
-    } else {
-      const stmt = db.prepare(
-        `SELECT url, title, last_visit_date / 1000 AS t FROM moz_places ORDER BY last_visit_date DESC LIMIT ?`
-      )
-      stmt.bind([MAX_ENTRIES])
-      while (stmt.step()) {
-        const r = stmt.getAsObject() as { url: string; title: string; t: number }
-        rows.push({ url: r.url, title: r.title ?? '', lastVisit: Number(r.t) || 0 })
-      }
-      stmt.free()
-    }
-    db.close()
-    try {
-      fs.unlinkSync(tmp)
-    } catch {
-      // best effort
-    }
+    const rows = await parseHistoryInWorker(profile.historyPath, profile.kind)
     snapshots.set(profile, rows)
   } catch {
     snapshots.set(profile, [])
