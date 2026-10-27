@@ -338,7 +338,7 @@ export function registerIpc(win: BrowserWindow): void {
     const projects = projectsMod.listProjects()
     const rows = db.all<{ project_id: number | null; ms: number }>(
       `SELECT project_id, SUM(end_ts - start_ts) AS ms FROM app_activities
-       WHERE is_deleted = 0 AND start_ts < ? AND end_ts > ? GROUP BY project_id`,
+       WHERE is_deleted = 0 AND is_idle = 0 AND start_ts < ? AND end_ts > ? GROUP BY project_id`,
       [endTs, startTs]
     )
     const taskRows = db.all<{ project_id: number | null; ms: number }>(
@@ -393,7 +393,7 @@ export function registerIpc(win: BrowserWindow): void {
       const dayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
       const rows = db.all<{ project_id: number | null; ms: number }>(
         `SELECT project_id, SUM(end_ts - start_ts) AS ms FROM app_activities
-         WHERE is_deleted = 0 AND start_ts >= ? AND start_ts < ? GROUP BY project_id`,
+         WHERE is_deleted = 0 AND is_idle = 0 AND start_ts >= ? AND start_ts < ? GROUP BY project_id`,
         [cursorTs, dayEnd]
       )
       const byProject = new Map<number | null, number>()

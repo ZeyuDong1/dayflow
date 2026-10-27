@@ -55,7 +55,7 @@ async function tick(): Promise<boolean> {
     }
     const rows = db.all<{ project_id: number | null; ms: number }>(
       `SELECT project_id, SUM(end_ts - start_ts) AS ms FROM app_activities
-       WHERE is_deleted = 0 AND start_ts >= ? GROUP BY project_id`,
+       WHERE is_deleted = 0 AND is_idle = 0 AND start_ts >= ? GROUP BY project_id`,
       [sinceTs]
     )
     let focusMs = 0

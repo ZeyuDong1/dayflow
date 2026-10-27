@@ -246,6 +246,7 @@ function ActivityTree({
     }
   >()
   for (const a of activities) {
+    if (a.isIdle) continue // AFK 段不计入学习时间(用户定)
     const min = (a.endTs - a.startTs) / 60000
     const pkey = String(a.projectId ?? 'null')
     const P = byProj.get(pkey) ?? { minutes: 0, projId: a.projectId, ids: [] as number[], byApp: new Map() }
