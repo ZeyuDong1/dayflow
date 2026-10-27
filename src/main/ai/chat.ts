@@ -4,6 +4,7 @@ import { db } from '../db'
 import { getCardsInRange } from './analyze'
 import { chatStream, textComplete, type ChatTurn } from './providers'
 import { buildTutorSystemPrompt, extractAndSaveMemo, stripMemoLine, buildGreeting } from './tutor'
+import { buildAppContext } from './app-context'
 import { gatherMemory } from '../memory/client'
 import { addDaysKey, todayKey } from '../paths'
 import type { ChatConversation, ChatMessage } from '../../shared/types'
@@ -180,9 +181,20 @@ export async function sendChat(
     .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }))
 
   const timelineContext = buildTimelineContext(question)
+  const appContext = buildAppContext(resolveContextDays(question))
   const contextTurn: ChatTurn = {
     role: 'user',
-    content: `Here is my recorded timeline activity data for reference:\n\n${timelineContext}\n\nMy question: ${question}`
+    content: `Here is my in-app data for reference:
+
+## Recorded timeline activity cards
+
+${timelineContext}
+
+## Live app state (tasks / foreground / raw activities)
+
+${appContext}
+
+My question: ${question}`
   }
   // Replace the raw question with the enriched one; the assistant's prior turns stay.
   const turns: ChatTurn[] = []

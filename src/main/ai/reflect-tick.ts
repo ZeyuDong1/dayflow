@@ -2,6 +2,7 @@ import { db } from '../db'
 import { getSettings } from '../settings'
 import { textComplete, resolveProvider } from './providers'
 import { runReflectionTick } from './tutor'
+import { buildTaskContext } from './app-context'
 
 /**
  * 导师的"后台思考"调度器:
@@ -71,6 +72,8 @@ async function tick(): Promise<boolean> {
       focusMinutes: focusMs / 60000,
       devMinutes: devMs / 60000,
       chatExcerpt: collectRecentChatExcerpt(),
+      // 任务系统现状一并给反思:攒任务/拖延任务的模式才看得出来
+      taskContext: buildTaskContext(),
       llmComplete: (prompt) => textComplete(prompt, 'tutor-reflect')
     }).then((note) => {
       wrote = !!note

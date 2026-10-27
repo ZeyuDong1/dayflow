@@ -130,18 +130,21 @@ export async function runReflectionTick(input: {
   focusMinutes: number
   devMinutes: number
   chatExcerpt: string
+  /** 任务系统现状(进行中计时/任务列表/番茄余额/最近专注会话),可选注入 */
+  taskContext?: string
   llmComplete: (prompt: string) => Promise<string>
 }): Promise<string | null> {
   const acts = input.recentActivities
     .slice(0, 12)
     .map((a) => `- ${a.appName}: ${a.title.slice(0, 60)} (${Math.round(a.minutes)}m)`)
     .join('\n')
+  const taskBlock = input.taskContext ? `\n任务与应用状态:\n${input.taskContext.slice(0, 2000)}\n` : ''
   const prompt = `你是学习导师${TUTOR_NAME}的"后台思考"。根据最近的情况输出 JSON(只输出 JSON,不要其他文字):
 {"reflection": "2-3 句反思,存入长期记忆。用专业视角找模式:分心的情绪诱因(焦虑/无聊/畏难)、启动困难、时间感偏差、高效时段、学习方法是否低效;既洞察又不评判,不贴标签", "nudge": "25 字内,下次他分心被你打断时说的第一句话:基于上述模式的持续引导,温暖、先接情绪、给 2 分钟台阶"}
 
 最近活动:
 ${acts || '（无)'}
-专注约 ${Math.round(input.focusMinutes)} 分钟,分心约 ${Math.round(input.devMinutes)} 分钟。
+专注约 ${Math.round(input.focusMinutes)} 分钟,分心约 ${Math.round(input.devMinutes)} 分钟。${taskBlock}
 最近对话片段: ${input.chatExcerpt.slice(0, 400) || '（无)'}`
   try {
     const raw = await input.llmComplete(prompt)
