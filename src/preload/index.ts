@@ -240,8 +240,6 @@ const api = {
   supervisionMinimizeTarget: (): Promise<boolean> =>
     ipcRenderer.invoke('supervision:minimizeTarget'),
   supervisionCloseTarget: (): Promise<boolean> => ipcRenderer.invoke('supervision:closeTarget'),
-  supervisionWhitelistProject: (projectId: number): Promise<boolean> =>
-    ipcRenderer.invoke('supervision:whitelist-project', projectId),
   supervisionStartSessionNow: (): Promise<void> => ipcRenderer.invoke('supervision:start-session-now'),
   supervisionStartSessionIn: (minutes: number): Promise<void> =>
     ipcRenderer.invoke('supervision:start-session-in', minutes),
