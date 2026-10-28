@@ -125,7 +125,12 @@ const MAX_ENTRIES = 800
 // 进程零阻塞。worker 常驻一个,sql.js 实例只初始化一次。
 // ---------------------------------------------------------------------------
 
-const SQLJS_DIR = path.join(__dirname, '../../node_modules/sql.js/dist')
+const SQLJS_DIR = (() => {
+  // 打包后 sql.js 整目录 asarUnpack;eval worker 的 require 不一定有 asar 重定向,
+  // 显式指向解包路径(app.asar → app.asar.unpacked),dev 下路径不含 app.asar,原样不变
+  const unpacked = __dirname.replace('app.asar', 'app.asar.unpacked')
+  return path.join(unpacked, '../../node_modules/sql.js/dist')
+})()
 const HISTORY_WORKER_SCRIPT = `
 const { workerData, parentPort } = require('worker_threads')
 const initSqlJs = require(workerData.sqlJsEntry)
