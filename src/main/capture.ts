@@ -90,17 +90,20 @@ async function captureDisplays(targetHeight: number, allDisplays: boolean): Prom
     : [screen.getPrimaryDisplay()]
   if (displays.length === 0) return Buffer.alloc(0)
 
-  // Request at each screen's physical resolution so downscaling stays sharp.
-  let reqW = 0
-  let reqH = 0
-  for (const d of displays) {
+  // 缩放交给抓取器(浏览器进程)完成:直接按目标高度请求缩略图。
+  // 之前按全物理分辨率请求(混合 DPI 双屏 ≈ 24MP),主进程再做 BGRA resize,
+  // 每 tick 一波大内存操作 = 周期性系统卡顿的来源;现在主进程只拿小图。
+  const phys = (d: Electron.Display): { w: number; h: number } => {
     const sf = Math.max(1, d.scaleFactor ?? 1)
-    reqW = Math.max(reqW, Math.round(d.size.width * sf))
-    reqH = Math.max(reqH, Math.round(d.size.height * sf))
+    return { w: Math.round(d.size.width * sf), h: Math.round(d.size.height * sf) }
   }
+  const sizes = displays.map(phys)
+  const maxH = Math.max(...sizes.map((s) => s.h))
+  const physTotalW = sizes.reduce((a, s) => a + s.w, 0)
+  const scale = targetHeight / maxH
   const sources = await desktopCapturer.getSources({
     types: ['screen'],
-    thumbnailSize: { width: reqW, height: reqH }
+    thumbnailSize: { width: Math.max(targetHeight, Math.round(physTotalW * scale)), height: targetHeight }
   })
   if (sources.length === 0) return Buffer.alloc(0)
 
@@ -110,9 +113,12 @@ async function captureDisplays(targetHeight: number, allDisplays: boolean): Prom
     .sort((a, b) => a.bounds.x - b.bounds.x || a.bounds.y - b.bounds.y)
     .map((d) => byId.get(String(d.id)))
     .filter((s): s is Electron.DesktopCapturerSource => !!s)
-  const frames = (ordered.length > 0 ? ordered : sources).map((s) =>
-    s.thumbnail.resize({ height: targetHeight })
-  )
+  // 超宽/竖屏组合里某块屏可能被盒宽限制没缩到目标高度,兜底再缩一次(小图,代价可忽略)
+  const frames = (ordered.length > 0 ? ordered : sources).map((s) => {
+    const img = s.thumbnail
+    if (img.isEmpty()) return img
+    return img.getSize().height === targetHeight ? img : img.resize({ height: targetHeight })
+  })
   if (frames.length === 0) return Buffer.alloc(0)
 
   if (frames.length === 1) {
