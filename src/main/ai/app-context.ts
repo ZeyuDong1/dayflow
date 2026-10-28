@@ -5,6 +5,7 @@
  * (按 类型×应用 聚合 + 最长样本),全部本地直查,不花 token。
  */
 import { db } from '../db'
+import { dayEndTs, dayStartTs } from '../paths'
 import { getForegroundInfoSync } from '../foreground'
 import { getInterruptState } from '../supervision'
 import { TaskService } from '../todo/service'
@@ -82,10 +83,8 @@ export function buildTaskContext(): string {
 export function buildActivityDigest(days: string[]): string {
   const startDay = days[0]
   const endDay = days[days.length - 1]
-  const [sy, sm, sd] = startDay.split('-').map(Number)
-  const [ey, em, ed] = endDay.split('-').map(Number)
-  const startTs = new Date(sy, sm - 1, sd, 4, 0, 0, 0).getTime()
-  const endTs = new Date(ey, em - 1, ed + 1, 4, 0, 0, 0).getTime()
+  const startTs = dayStartTs(startDay)
+  const endTs = dayEndTs(endDay)
 
   const rows = db.all<{ proj: string | null; app_name: string; ms: number; idle_ms: number }>(
     `SELECT pr.title AS proj, a.app_name,

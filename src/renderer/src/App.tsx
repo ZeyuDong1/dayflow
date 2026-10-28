@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import ActivitiesView from './pages/ActivitiesView'
 import DailyPage from './pages/DailyPage'
 import WeeklyPage from './pages/WeeklyPage'
@@ -121,11 +121,23 @@ export default function App(): React.ReactElement {
   const [newProjTitle, setNewProjTitle] = useState('')
   const [dropTarget, setDropTarget] = useState<number | null | 'unassigned'>(null)
 
+  const todayRef = useRef('')
   useEffect(() => {
-    void window.dayflow.getTodayKey().then((t) => {
+    // 「今天」跨天实时滚动:应用长期开着,午夜过后 30s 内自动翻到新一天。
+    // 用户正看着过去某天时不打扰,只更新 today 本身。
+    const apply = (t: string): void => {
+      if (!t || t === todayRef.current) return
+      const prev = todayRef.current
+      todayRef.current = t
       setToday(t)
-      setDay(t)
-    })
+      if (prev === '') setDay(t)
+      else setDay((d) => (d === prev ? t : d))
+    }
+    void window.dayflow.getTodayKey().then(apply)
+    const iv = setInterval(() => void window.dayflow.getTodayKey().then(apply), 30_000)
+    return () => clearInterval(iv)
+  }, [])
+  useEffect(() => {
     void window.dayflow.isOnboarded().then((done) => setNeedsOnboarding(!done))
   }, [])
 

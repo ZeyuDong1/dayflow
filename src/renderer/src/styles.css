@@ -1535,11 +1535,11 @@ label.field {
   flex-wrap: wrap;
 }
 
-/* 被遮窗口此刻的 title/网址(实时刷新,关闭网页换标签后能看清底下是什么) */
+/* 被遮窗口此刻的 title/网址(实时刷新,关闭网页换标签后能看清底下是什么),同行显示 */
 .itx-target {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: center;
+  gap: 6px;
   margin-top: 6px;
   padding: 6px 10px;
   border: 1px solid var(--border);
@@ -1548,6 +1548,8 @@ label.field {
   min-width: 0;
 }
 .itx-target-title {
+  flex: 0 1 auto;
+  min-width: 0;
   font-size: 12px;
   font-weight: 600;
   color: var(--text);
@@ -1555,7 +1557,13 @@ label.field {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.itx-target-dot {
+  flex: none;
+  color: var(--text-faint);
+}
 .itx-target-url {
+  flex: 1 1 auto;
+  min-width: 0;
   font-size: 11px;
   color: var(--text-faint);
   white-space: nowrap;

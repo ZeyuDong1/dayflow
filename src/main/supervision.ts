@@ -633,7 +633,7 @@ export async function previewInterrupt(strict = false): Promise<boolean> {
 
 function isPaused(): boolean {
   if (!pausedDayKey) return false
-  // "今天到此为止":按 Dayflow 天边界(凌晨 4 点)跨天自动恢复
+  // "今天到此为止":按天边界(午夜 0 点)跨天自动恢复
   if (pausedDayKey === todayKey()) return true
   pausedDayKey = null
   return false

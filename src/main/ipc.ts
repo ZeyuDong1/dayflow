@@ -327,10 +327,8 @@ export function registerIpc(win: BrowserWindow): void {
 
   // -- Reports (project stats + timesheet CSV) -----------------------------------
   ipcMain.handle('report:projectStats', (_e, startDay: string, endDay: string) => {
-    const [sy, sm, sd] = startDay.split('-').map(Number)
-    const [ey, em, ed] = endDay.split('-').map(Number)
-    const startTs = new Date(sy, sm - 1, sd, 4, 0, 0, 0).getTime()
-    const endTs = new Date(ey, em - 1, ed + 1, 4, 0, 0, 0).getTime()
+    const startTs = dayStartTs(startDay)
+    const endTs = dayEndTs(endDay)
     const projects = projectsMod.listProjects()
     const rows = db.all<{ project_id: number | null; ms: number }>(
       `SELECT project_id, SUM(end_ts - start_ts) AS ms FROM app_activities
@@ -376,10 +374,8 @@ export function registerIpc(win: BrowserWindow): void {
   })
 
   ipcMain.handle('report:timesheet', async (_e, startDay: string, endDay: string) => {
-    const [sy, sm, sd] = startDay.split('-').map(Number)
-    const [ey, em, ed] = endDay.split('-').map(Number)
-    let cursorTs = new Date(sy, sm - 1, sd, 4, 0, 0, 0).getTime()
-    const endTs = new Date(ey, em - 1, ed + 1, 4, 0, 0, 0).getTime()
+    let cursorTs = dayStartTs(startDay)
+    const endTs = dayEndTs(endDay)
     const projects = projectsMod.listProjects()
     const lines = ['日期,项目,分钟,效率分,是否可计费']
     let guard = 0

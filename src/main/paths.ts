@@ -29,27 +29,24 @@ export function getRecordingsDirForDay(dayKey: string): string {
   return dir
 }
 
-/** Local YYYY-MM-DD for a timestamp, using Dayflow's 4 AM day boundary. */
+/** Local YYYY-MM-DD for a timestamp, calendar day boundary (00:00). */
 export function dayKeyForTs(ts: number): string {
   const d = new Date(ts)
-  if (d.getHours() < 4) {
-    d.setDate(d.getDate() - 1)
-  }
   const y = d.getFullYear()
   const m = String(d.getMonth() + 1).padStart(2, '0')
   const day = String(d.getDate()).padStart(2, '0')
   return `${y}-${m}-${day}`
 }
 
-/** Start-of-day (4 AM local) epoch ms for a YYYY-MM-DD key. */
+/** Start-of-day (00:00 local) epoch ms for a YYYY-MM-DD key. */
 export function dayStartTs(dayKey: string): number {
   const [y, m, d] = dayKey.split('-').map(Number)
-  return new Date(y, m - 1, d, 4, 0, 0, 0).getTime()
+  return new Date(y, m - 1, d, 0, 0, 0, 0).getTime()
 }
 
 export function dayEndTs(dayKey: string): number {
   const [y, m, d] = dayKey.split('-').map(Number)
-  return new Date(y, m - 1, d + 1, 4, 0, 0, 0).getTime()
+  return new Date(y, m - 1, d + 1, 0, 0, 0, 0).getTime()
 }
 
 export function formatDayLabel(dayKey: string): string {

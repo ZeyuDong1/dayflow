@@ -6,7 +6,7 @@ import { chatStream, textComplete, type ChatTurn } from './providers'
 import { buildTutorSystemPrompt, extractAndSaveMemo, stripMemoLine, buildGreeting } from './tutor'
 import { buildAppContext } from './app-context'
 import { gatherMemory } from '../memory/client'
-import { addDaysKey, todayKey } from '../paths'
+import { addDaysKey, dayEndTs, dayStartTs, todayKey } from '../paths'
 import type { ChatConversation, ChatMessage } from '../../shared/types'
 
 const CONTEXT_DAYS_DEFAULT = 3
@@ -117,10 +117,8 @@ function buildTimelineContext(question: string): string {
   const days = resolveContextDays(question)
   const startDay = days[0]
   const endDay = days[days.length - 1]
-  const [sy, sm, sd] = startDay.split('-').map(Number)
-  const [ey, em, ed] = endDay.split('-').map(Number)
-  const startTs = new Date(sy, sm - 1, sd, 4, 0, 0, 0).getTime()
-  const endTs = new Date(ey, em - 1, ed + 1, 4, 0, 0, 0).getTime()
+  const startTs = dayStartTs(startDay)
+  const endTs = dayEndTs(endDay)
 
   const cards = getCardsInRange(startTs, endTs)
   if (cards.length === 0) {

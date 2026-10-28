@@ -1,4 +1,5 @@
 import { powerMonitor } from 'electron'
+import { dayEndTs, dayStartTs } from './paths'
 import { db } from './db'
 import { getSettings } from './settings'
 import { getForegroundInfo } from './foreground'
@@ -197,9 +198,8 @@ interface ActivityRow {
 }
 
 export function getActivitiesForDay(day: string) {
-  const [y, m, d] = day.split('-').map(Number)
-  const start = new Date(y, m - 1, d, 4, 0, 0, 0).getTime()
-  const end = new Date(y, m - 1, d + 1, 4, 0, 0, 0).getTime()
+  const start = dayStartTs(day)
+  const end = dayEndTs(day)
   const rows = db.all<ActivityRow>(
     `SELECT * FROM app_activities WHERE is_deleted = 0 AND start_ts < ? AND end_ts > ?
      ORDER BY start_ts ASC`,

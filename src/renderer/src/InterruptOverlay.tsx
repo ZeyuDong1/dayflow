@@ -209,9 +209,12 @@ export default function InterruptOverlay(): React.ReactElement {
                   {state.targetTitle}
                 </span>
                 {state.targetUrl && (
-                  <span className="itx-target-url" title={state.targetUrl}>
-                    {state.targetUrl}
-                  </span>
+                  <>
+                    <span className="itx-target-dot">·</span>
+                    <span className="itx-target-url" title={state.targetUrl}>
+                      {state.targetUrl}
+                    </span>
+                  </>
                 )}
               </div>
             )}
