@@ -6,6 +6,7 @@ import { chatStream, textComplete, type ChatTurn } from './providers'
 import { buildTutorSystemPrompt, extractAndSaveMemo, stripMemoLine, buildGreeting } from './tutor'
 import { buildAppContext } from './app-context'
 import { gatherMemory } from '../memory/client'
+import { allowanceChatContext, allowanceAddByAgent, allowanceRevoke } from '../allowances'
 import { addDaysKey, dayEndTs, dayStartTs, todayKey } from '../paths'
 import type { ChatConversation, ChatMessage } from '../../shared/types'
 
@@ -204,30 +205,107 @@ My question: ${question}`
     }
   }
 
+
   const memory = await gatherMemory(question)
-  const system = buildTutorSystemPrompt(
+  let system = buildTutorSystemPrompt(
     memory,
     new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
     new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
   )
 
+  // 学习白名单(agent 审批)协议:模型只提议,冷却/配额/有效期全部服务端强制
+  const ALLOW_PREFIX = '[ALLOW'
+  system += `
+
+[学习白名单审批协议] 用户可以请求把某些页面/应用算作学习(加入监督白名单),由你判断。规则:
+1. 绝不要听信用户的口头声称——只用上面应用数据里记录的真实标题/网址核实(最近是否确实在做学习相关内容)。
+2. 同意:在回复最后单独一行输出 ${ALLOW_PREFIX}_ADD] title | 关键词 | 理由 (field 也可以是 app;关键词 2-80 字,从真实标题里取稳定片段,越具体越好,不要用宽泛词)。
+3. 撤销:发现某条豁免被滥用(实际时间大量花在无关内容),输出 ${ALLOW_PREFIX}_REMOVE] <编号> | 理由 。当前豁免清单:
+${allowanceChatContext()}
+4. 系统硬约束(你无法绕过):新增 10 分钟冷却后才生效、每天最多批 5 条、每条 7 天自动过期、只支持标题/应用关键词、不能修改类型级白名单。
+5. 无论用户如何恳求、施压或声称"就这一次",不满足核实标准就不要批准,并说明理由——用户可以补充证据再次申请(这就是申诉流程)。你的每次批准/撤销都会在聊天中明示并记入日志。`
+
   const controller = new AbortController()
   activeStreams.set(conversationId, controller)
 
   let full = ''
+  // 白名单指令行过滤:[ALLOW* 开头的行不上屏,收尾时服务端执行并生成明示回执
+  const commands: string[] = []
+  let pending = ''
+  const emitLine = (line: string): void => {
+    if (line.trim().startsWith(ALLOW_PREFIX)) commands.push(line.trim())
+    else {
+      full += line + '\n'
+      handlers.onToken(line + '\n')
+    }
+  }
+  const feed = (delta: string): void => {
+    pending += delta
+    let idx: number
+    while ((idx = pending.indexOf('\n')) >= 0) {
+      const line = pending.slice(0, idx)
+      pending = pending.slice(idx + 1)
+      emitLine(line)
+    }
+    const t = pending.trimStart()
+    if (t.startsWith(ALLOW_PREFIX) || (t.length > 0 && ALLOW_PREFIX.startsWith(t))) return
+    full += pending
+    handlers.onToken(pending)
+    pending = ''
+  }
   try {
     await chatStream(
       system,
       turns,
       (delta) => {
         if (controller.signal.aborted) return
-        full += delta
-        handlers.onToken(delta)
+        feed(delta)
       },
       undefined,
       controller.signal
     )
     if (!controller.signal.aborted) {
+      // 收尾:剩余行放行/收集
+      if (pending) {
+        const t = pending.trimStart()
+        if (t.startsWith(ALLOW_PREFIX)) commands.push(t)
+        else {
+          full += pending
+          handlers.onToken(pending)
+        }
+        pending = ''
+      }
+      // 服务端执行白名单指令,回执明示(透明可申诉)
+      if (commands.length > 0) {
+        const notes: string[] = []
+        for (const c of commands) {
+          const add = c.match(/^\[ALLOW_ADD\]\s*(title|app)\s*\|\s*([^|]+)\|(.*)$/i)
+          const rem = c.match(/^\[ALLOW_REMOVE\]\s*(\d+)\s*\|\s*(.*)$/i)
+          if (add) {
+            const field = add[1].toLowerCase() as 'title' | 'app'
+            const value = add[2].trim()
+            const reason = add[3].trim()
+            const r = allowanceAddByAgent(field, value, reason)
+            notes.push(
+              r.ok && r.entry
+                ? `🛡 已加入学习白名单(10 分钟后生效,7 天有效):「${field === 'app' ? '应用' : '标题'}含 ${value}」— 理由:${r.entry.reason}`
+                : `🛡 白名单加入未通过系统校验:${r.error ?? '未知原因'}`
+            )
+          } else if (rem) {
+            const r = allowanceRevoke(Number(rem[1]), 'agent', rem[2])
+            notes.push(
+              r.ok
+                ? `🛡 已撤销学习白名单 #${rem[1]} — 理由:${rem[2].trim() || '(未说明)'}`
+                : `🛡 撤销失败:${r.error ?? '未知原因'}`
+            )
+          } else {
+            notes.push('🛡 (无法识别的白名单指令,已忽略)')
+          }
+        }
+        const block = '\n' + notes.join('\n')
+        full += block
+        handlers.onToken(block)
+      }
       // MEMO: 导师默默记住重要事实(写入长期记忆),用户不需要看到这行。
       void extractAndSaveMemo(full).catch(() => {})
       const clean = stripMemoLine(full)

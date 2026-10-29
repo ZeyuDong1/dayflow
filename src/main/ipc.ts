@@ -37,6 +37,7 @@ import { memoryQuery, memoryWritePage, MEM_GOAL } from './memory/client'
 import { reflectNow, restartReflectionLoop } from './ai/reflect-tick'
 import * as supervision from './supervision'
 import * as hardcore from './hardcore'
+import * as allowances from './allowances'
 import * as chat from './ai/chat'
 import { exportMarkdown } from './exporter'
 import { getStorageUsage, runCleanup, deleteAllData } from './cleanup'
@@ -220,6 +221,9 @@ export function registerIpc(win: BrowserWindow): void {
   // 强力监督锁
   ipcMain.handle('hardcore:status', () => hardcore.status())
   ipcMain.handle('hardcore:enable', (_e, minHours: number) => hardcore.enable(minHours))
+  // 学习白名单(agent 审批)
+  ipcMain.handle('allowances:list', () => allowances.allowanceList())
+  ipcMain.handle('allowances:revoke', (_e, id: number) => allowances.allowanceRevoke(id, 'user', ''))
   // 强打断面板出口:最小化/关闭被覆盖的应用(等价标题栏按钮,面板盖住了它们)
   ipcMain.handle('supervision:minimizeTarget', () => supervision.minimizeInterruptTarget())
   // 会话开始询问

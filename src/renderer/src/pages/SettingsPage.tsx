@@ -721,6 +721,7 @@ export default function SettingsPage({ onSaved }: { onSaved: () => void }): Reac
           </div>
         </div>
         <HardcorePanel />
+        <AllowancePanel />
         <div className="panel">
           <div className="panel-title">监督打断节奏</div>
           <div className="settings-row">
@@ -1329,6 +1330,82 @@ function HardcorePanel(): React.ReactElement {
           </div>
         </>
       )}
+    </div>
+  )
+}
+
+interface AllowanceItem {
+  id: number
+  field: 'title' | 'app'
+  value: string
+  reason: string
+  createdAtTs: number
+  effectiveAtTs: number
+  expiresAtTs: number
+  revokedAtTs?: number
+  revokedBy?: string
+  revokeReason?: string
+}
+
+/** 学习白名单(agent 审批):全程可见,用户可手动撤销;申诉=继续和小舟聊。 */
+function AllowancePanel(): React.ReactElement {
+  const [items, setItems] = useState<AllowanceItem[]>([])
+
+  const load = useCallback(() => {
+    void window.dayflow.allowancesList().then((list) => setItems(list as AllowanceItem[]))
+  }, [])
+  useEffect(load, [load])
+
+  const revoke = (id: number): void => {
+    void window.dayflow.allowancesRevoke(id).then(load)
+  }
+
+  const fmt = (ts: number): string =>
+    new Date(ts).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+
+  const stateOf = (a: AllowanceItem): { label: string; color: string } => {
+    const now = Date.now()
+    if (a.revokedAtTs) {
+      return {
+        label: `已撤销(${a.revokedBy === 'user' ? '用户' : a.revokedBy === 'agent' ? '小舟' : '自动过期'} ${fmt(a.revokedAtTs)})`,
+        color: 'var(--text-faint)'
+      }
+    }
+    if (now < a.effectiveAtTs) return { label: `冷却中,${fmt(a.effectiveAtTs)} 生效`, color: 'var(--yellow, #b8860b)' }
+    if (now > a.expiresAtTs) return { label: '已过期', color: 'var(--text-faint)' }
+    return { label: `生效中,${fmt(a.expiresAtTs)} 过期`, color: 'var(--green)' }
+  }
+
+  return (
+    <div className="panel">
+      <div className="panel-title">学习白名单(小舟审批)</div>
+      <div className="settings-row-help" style={{ marginBottom: 8 }}>
+        在对话页请求"把 X 算作学习",小舟核实你的真实活动后决定加不加;她发现滥用也会主动撤销。
+        所有批准/撤销都在聊天里明示并记入日志;冷却 10 分钟后生效、每天最多 5 条、7 天自动过期。
+        觉得她判错了,直接继续和她聊提交证据申诉,或在这里手动撤销。
+      </div>
+      {items.length === 0 && <div className="settings-row-help">还没有任何豁免条目。</div>}
+      {items.map((a) => {
+        const st = stateOf(a)
+        return (
+          <div className="review-row" key={a.id}>
+            <div className="review-main">
+              <div className="review-title">
+                <strong>{a.field === 'app' ? '应用' : '标题'}</strong> 含「{a.value}」
+              </div>
+              <div className="field-help">理由:{a.reason}</div>
+            </div>
+            <span className="chip" style={{ color: st.color }}>
+              {st.label}
+            </span>
+            {!a.revokedAtTs && (
+              <button className="btn small ghost" onClick={() => revoke(a.id)}>
+                撤销
+              </button>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }

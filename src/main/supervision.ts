@@ -4,6 +4,7 @@ import { getSettings } from './settings'
 import { todayKey } from './paths'
 import { db } from './db'
 import { classifyActivity, classifyActivityDetail, isBrowserApp, listProjects } from './projects'
+import { matchAllowance } from './allowances'
 import {
   closeTabInWindow,
   closeWindow,
@@ -119,6 +120,8 @@ function judge(fg: ForegroundInfo): Judge {
   if (fg.windowTitle === '学习监督') return 'neutral' // 打断面板自己
   if (/dayflow/i.test(fg.appName)) return 'neutral' // Dayflow 自身(设置/查看时间线)
   if (isPrivate(fg.appName, fg.windowTitle)) return 'neutral'
+  // agent 审批的页面级豁免优先于一切分类(冷却期未到不生效)
+  if (matchAllowance(fg.appName, fg.windowTitle)) return 'learning'
   const projectId = classifyActivity(fg.appName, fg.windowTitle)
   if (projectId === null) return 'neutral'
   const allowed = settings.tutor.allowedProjectIds
