@@ -1,4 +1,5 @@
 import { db } from './db'
+import { isLocked as hardcoreLocked } from './hardcore'
 import type { AppSettings, DeepPartial, TimelineCategory } from '../shared/types'
 
 export const SETTINGS_KEY = 'app-settings'
@@ -122,6 +123,10 @@ export function getSettings(): AppSettings {
 }
 
 export function saveSettings(patch: DeepPartial<AppSettings>): AppSettings {
+  // 强力监督锁定中:监督相关(tutor 域)设置服务端拒改——UI 锁只是第一层
+  if (patch.tutor && hardcoreLocked()) {
+    throw new Error('强力监督锁定中,监督相关设置不可修改(到期自动解锁后恢复)')
+  }
   const current = getSettings()
   const next = deepMerge(current, patch)
   db.run(

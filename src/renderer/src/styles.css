@@ -4121,3 +4121,10 @@ body.route-floating { background: transparent !important; }
 .ow-measure .ow-focus-title, .ow-measure .ow-side-title {
   display: inline; -webkit-line-clamp: unset; overflow: visible; white-space: nowrap;
 }
+
+
+/* 强力监督锁定中的设置面板:只读观感 */
+.settings-locked {
+  opacity: 0.55;
+  pointer-events: none;
+}

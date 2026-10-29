@@ -55,9 +55,12 @@ export default function SettingsPage({ onSaved }: { onSaved: () => void }): Reac
   const [exportEnd, setExportEnd] = useState('')
   const [reprocessDay, setReprocessDay] = useState('')
   const [statusMsg, setStatusMsg] = useState('')
+  const [hardcoreLocked, setHardcoreLocked] = useState(false)
+  const [lockMsg, setLockMsg] = useState('')
 
   useEffect(() => {
     void window.dayflow.getSettings().then(setSettings)
+    void window.dayflow.hardcoreStatus().then((h) => setHardcoreLocked(h.locked))
     void window.dayflow.getStorageUsage().then(setUsage)
     void window.dayflow.tutorStatus().then(setTutorStatus)
     void window.dayflow.listProjects().then(setProjects)
@@ -76,10 +79,24 @@ export default function SettingsPage({ onSaved }: { onSaved: () => void }): Reac
   const patch = useCallback(
     (p: DeepPartial<AppSettings>) => {
       setSettings((prev) => (prev ? (mergeDeep(prev, p) as AppSettings) : prev))
-      void window.dayflow.setSettings(p).then((saved) => {
-        setSettings(saved)
-        onSaved()
-      })
+      void window.dayflow
+        .setSettings(p)
+        .then((saved) => {
+          setSettings(saved)
+          onSaved()
+          setLockMsg('')
+          return window.dayflow.hardcoreStatus()
+        })
+        .then((h) => {
+          if (h) setHardcoreLocked(h.locked)
+        })
+        .catch((err) => {
+          setLockMsg(err instanceof Error ? err.message : String(err))
+          void window.dayflow
+            .setSettings({})
+            .then((saved) => setSettings(saved))
+            .catch(() => {})
+        })
     },
     [onSaved]
   )
@@ -576,7 +593,18 @@ export default function SettingsPage({ onSaved }: { onSaved: () => void }): Reac
 
       {tab === 'tutor' && (
         <>
-        <div className="panel">
+        {hardcoreLocked && (
+          <div className="pending-note">
+            🔒 强力监督锁定中:监督相关设置不可修改,到期自动解锁后恢复。下方学习白名单(小舟审批)仍可查看/手动撤销。
+            {lockMsg && <div style={{ color: 'var(--red)' }}>{lockMsg}</div>}
+          </div>
+        )}
+        {!hardcoreLocked && lockMsg && (
+          <div className="pending-note" style={{ color: 'var(--red)' }}>
+            {lockMsg}
+          </div>
+        )}
+        <div className={'panel' + (hardcoreLocked ? ' settings-locked' : '')}>
           <div className="panel-title">导师与目标</div>
           <div className="settings-row">
             <div>
@@ -609,7 +637,7 @@ export default function SettingsPage({ onSaved }: { onSaved: () => void }): Reac
           </div>
 
         </div>
-        <div className="panel">
+        <div className={'panel' + (hardcoreLocked ? ' settings-locked' : '')}>
           <div className="panel-title">记忆与反思</div>
           <div className="settings-row">
             <div>
@@ -665,7 +693,7 @@ export default function SettingsPage({ onSaved }: { onSaved: () => void }): Reac
           </div>
 
         </div>
-        <div className="panel">
+        <div className={'panel' + (hardcoreLocked ? ' settings-locked' : '')}>
           <div className="panel-title">自动开始监督</div>
           <div className="settings-row">
             <div>
@@ -722,7 +750,7 @@ export default function SettingsPage({ onSaved }: { onSaved: () => void }): Reac
         </div>
         <HardcorePanel />
         <AllowancePanel />
-        <div className="panel">
+        <div className={'panel' + (hardcoreLocked ? ' settings-locked' : '')}>
           <div className="panel-title">监督打断节奏</div>
           <div className="settings-row">
             <div>
@@ -885,7 +913,7 @@ export default function SettingsPage({ onSaved }: { onSaved: () => void }): Reac
           </div>
 
         </div>
-        <div className="panel">
+        <div className={'panel' + (hardcoreLocked ? ' settings-locked' : '')}>
           <div className="panel-title">学习项目白名单</div>
           <div className="settings-row" style={{ alignItems: 'flex-start' }}>
             <div>
