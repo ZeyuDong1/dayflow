@@ -1,5 +1,7 @@
 # Dayflow
 
+**中文** | [English](README.en.md)
+
 **本地优先的屏幕时间追踪 + 学习监督导师。** 自动记录你在电脑上做了什么,归类成你自己的「类型」体系;内置一位会唠叨、会反思、记得住你任务的学习导师(Agent),在你分心时按阶梯升级打断——从轻提醒一路到盖住整个窗口的强遮蔽面板。
 
 基于 [JerryZLiu/Dayflow](https://github.com/JerryZLiu/Dayflow)(macOS)的移植(Electron),并融入了 EpochToDo 风格的任务系统。
