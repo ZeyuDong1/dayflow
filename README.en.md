@@ -6,7 +6,7 @@
 
 A port of [JerryZLiu/Dayflow](https://github.com/JerryZLiu/Dayflow) (macOS) built on Electron, with an EpochToDo-style task system folded in.
 
-> **Currently Windows 10/11 only.** On macOS, use the [original Dayflow](https://github.com/JerryZLiu/Dayflow). The core architecture (Electron + React + sql.js + AI pipeline) is cross-platform; porting to another OS mainly means swapping the foreground-tracking / window-geometry / browser-history layers (see `src/main/foreground.ts`, `windows-poll.ts`, `browser-history.ts`).
+> **Installers are provided for Windows 10/11; on macOS, build from source** — the core architecture (Electron + React + sql.js + AI pipeline) is cross-platform, and only a few layers are OS-specific (see `src/main/foreground.ts`, `windows-poll.ts`, `browser-history.ts`).
 
 ![Activities](docs/images/activities.png)
 

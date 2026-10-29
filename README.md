@@ -6,7 +6,7 @@
 
 基于 [JerryZLiu/Dayflow](https://github.com/JerryZLiu/Dayflow)(macOS)的移植(Electron),并融入了 EpochToDo 风格的任务系统。
 
-> **当前支持 Windows 10/11**。macOS 请使用[原版 Dayflow](https://github.com/JerryZLiu/Dayflow);核心架构(Electron + React + sql.js + AI 管线)是跨平台的,移植到其他平台主要替换前台追踪/窗口几何/浏览器历史路径这几层(见 `src/main/foreground.ts`、`windows-poll.ts`、`browser-history.ts`)。
+> **Windows 10/11 提供安装包;macOS 需自行编译**——核心架构(Electron + React + sql.js + AI 管线)是跨平台的,平台相关层只有前台追踪/窗口几何/浏览器历史路径几处(见 `src/main/foreground.ts`、`windows-poll.ts`、`browser-history.ts`)。
 
 ![活动页](docs/images/activities.png)
 
