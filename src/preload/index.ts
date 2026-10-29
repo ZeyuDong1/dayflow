@@ -246,7 +246,7 @@ const api = {
   supervisionSnoozeSession: (): Promise<void> => ipcRenderer.invoke('supervision:snooze-session'),
   hardcoreStatus: (): Promise<{ locked: boolean; unlockAfterTs: number; minHours: number; remainingMs: number }> =>
     ipcRenderer.invoke('hardcore:status'),
-  hardcoreEnable: (minHours: number): Promise<{ ok: boolean; error?: string }> =>
+  hardcoreEnable: (minHours: number): Promise<{ ok: boolean; error?: string; recoveryCode?: string }> =>
     ipcRenderer.invoke('hardcore:enable', minHours),
   supervisionSessionSnoozeMin: (): Promise<number> => ipcRenderer.invoke('supervision:session-snooze-min'),
   onSupervisionInterrupt: (cb: (payload: Record<string, unknown>) => void): (() => void) => {

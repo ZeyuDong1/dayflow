@@ -2,8 +2,9 @@
  * 强力监督锁(用户定):开启后到「最短锁定时长」结束前,应用无法被正常退出——
  * 窗口关闭仍走托盘常驻;托盘退出/App quit 一律拦截。唯一出口是找导师小舟聊天:
  * 到时间后她结合你的学习状态判断,同意才在回复里带上解锁指令,由系统执行。
- * 没有密码:解锁权完全由 agent 掌握。防君子不防小人:任务管理器杀进程挡不住,
- * 这是一条自我承诺装置,不是操作系统级防护。
+ * 另留一条绝对出口:开启时生成紧急解锁码写入文件,交给他人保管;凭码任何时刻
+ * (不受最短时长限制)可命令行解锁,用于 agent 误判或真实紧急情况。
+ * 防君子不防小人:任务管理器杀进程挡不住,这是一条自我承诺装置,不是操作系统级防护。
  *
  * 状态查询端点:127.0.0.1 /status(端口+token 写在 <userData>/hardcore-unlock.json),
  * 供 CLI 查剩余时间。
@@ -22,9 +23,12 @@ interface HardcoreState {
   /** 最早可解锁时刻(启用时刻 + 最短时长) */
   unlockAfterTs: number
   minHours: number
+  /** 紧急解锁码(交他人保管):只存哈希;明文只出现在生成时的紧急码文件里 */
+  recoverSalt: string
+  recoverHash: string | null
 }
 
-let state: HardcoreState = { enabled: false, unlockAfterTs: 0, minHours: 0 }
+let state: HardcoreState = { enabled: false, unlockAfterTs: 0, minHours: 0, recoverSalt: '', recoverHash: null }
 let server: http.Server | null = null
 let onUnlockedCb: (() => void) | null = null
 
@@ -61,24 +65,85 @@ export function status(): HardcoreStatus {
   }
 }
 
-/** 开启强力监督:立刻生效,最短时长内无法解锁。已开启时拒绝(先解锁才能重设)。 */
-export function enable(minHours: number): { ok: boolean; error?: string } {
+/** 开启强力监督:立刻生效,最短时长内无法解锁。返回一次性展示的紧急解锁码。 */
+export function enable(minHours: number): { ok: boolean; error?: string; recoveryCode?: string } {
   if (state.enabled) return { ok: false, error: '已处于强力监督中' }
   if (!(minHours > 0) || minHours > 24 * 30) return { ok: false, error: '时长需在 0-720 小时之间' }
-  state = { enabled: true, unlockAfterTs: Date.now() + Math.round(minHours * 3600_000), minHours }
+  const raw = crypto.randomBytes(4).toString('hex').toUpperCase()
+  const code = `${raw.slice(0, 4)}-${raw.slice(4)}`
+  const salt = crypto.randomBytes(16).toString('hex')
+  state = {
+    enabled: true,
+    unlockAfterTs: Date.now() + Math.round(minHours * 3600_000),
+    minHours,
+    recoverSalt: salt,
+    recoverHash: crypto.scryptSync(normCode(code), salt, 32).toString('hex')
+  }
   persist()
   startUnlockServer()
+  try {
+    fs.writeFileSync(
+      recoveryFilePath(),
+      [
+        'Dayflow 强力监督 · 紧急解锁码',
+        '',
+        `解锁码:${code}`,
+        '生成时间:' + new Date().toLocaleString('zh-CN'),
+        `最短锁定至:${new Date(state.unlockAfterTs).toLocaleString('zh-CN')}`,
+        '',
+        '用法(在用户的电脑上命令行执行):',
+        '  node tools/dayflowctl.mjs recover ' + code,
+        '',
+        '任何时刻可用,不受最短锁定时长限制——请交给信得过的人保管;',
+        '用户本人请删除这份本地副本,否则等于没有锁。',
+        '',
+        '常规出口(无需此码):最短时长结束后,在 Dayflow 对话页找导师小舟聊天,她同意即解锁。'
+      ].join('\n')
+    )
+  } catch {
+    // 文件写失败不阻断开启;码仍会在设置面板一次性展示
+  }
+  return { ok: true, recoveryCode: code }
+}
+
+function normCode(code: string): string {
+  return (code ?? '').replace(/[-\s]/g, '').toUpperCase()
+}
+
+function recoveryFilePath(): string {
+  return path.join(app.getPath('userData'), 'hardcore-recovery.txt')
+}
+
+/** 紧急解锁(交他人保管的码):任何时刻可用,不受最短时长限制。 */
+export function tryRecovery(code: string): { ok: boolean; error?: string } {
+  if (!state.enabled) return { ok: false, error: 'not-locked' }
+  const expect = state.recoverHash ?? ''
+  const given = crypto.scryptSync(normCode(code), state.recoverSalt, 32).toString('hex')
+  if (given.length !== expect.length || !crypto.timingSafeEqual(Buffer.from(given), Buffer.from(expect))) {
+    return { ok: false, error: 'bad-credentials' }
+  }
+  doUnlock()
   return { ok: true }
+}
+
+function doUnlock(): void {
+  state.enabled = false
+  state.recoverHash = null
+  persist()
+  stopUnlockServer()
+  try {
+    fs.unlinkSync(recoveryFilePath())
+  } catch {
+    // 已不存在
+  }
+  onUnlockedCb?.()
 }
 
 /** 导师聊天解锁(agent 决定):时间未到一律拒绝;到了即放行——判断权在 agent 是否发出指令。 */
 export function unlockByAgent(): { ok: boolean; error?: string } {
   if (!state.enabled) return { ok: false, error: 'not-locked' }
   if (Date.now() < state.unlockAfterTs) return { ok: false, error: 'too-early' }
-  state.enabled = false
-  persist()
-  stopUnlockServer()
-  onUnlockedCb?.()
+  doUnlock()
   return { ok: true }
 }
 
@@ -112,9 +177,21 @@ function startUnlockServer(): void {
         res.end(JSON.stringify(obj))
       }
       const u = new URL(req.url ?? '/', 'http://x')
-      if (u.pathname !== '/status' || req.method !== 'GET') return reply(404, { error: 'not-found' })
       if (u.searchParams.get('token') !== UNLOCK_TOKEN) return reply(401, { error: 'bad-credentials' })
-      reply(200, { locked: state.enabled, remainingMs: Math.max(0, state.unlockAfterTs - Date.now()) })
+      if (u.pathname === '/status' && req.method === 'GET') {
+        return reply(200, { locked: state.enabled, remainingMs: Math.max(0, state.unlockAfterTs - Date.now()) })
+      }
+      if (u.pathname === '/unlock' && req.method === 'POST') {
+        let parsed: { code?: string } = {}
+        try {
+          parsed = JSON.parse(body.join('') || '{}')
+        } catch {
+          return reply(400, { error: 'bad-json' })
+        }
+        const r = tryRecovery(parsed.code ?? '')
+        return reply(r.ok ? 200 : r.error === 'bad-credentials' ? 401 : 400, r)
+      }
+      reply(404, { error: 'not-found' })
     })
   })
   server = srv

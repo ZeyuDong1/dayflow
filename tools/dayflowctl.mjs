@@ -1,47 +1,106 @@
 #!/usr/bin/env node
 /**
- * 强力监督锁状态查询(仅本机):
- *   node tools/dayflowctl.mjs status     查看锁定状态/剩余时间
- * 解锁没有命令行——解锁权在导师小舟手里:到时间后去对话页找她聊天,她同意才解锁。
+ * 强力监督锁命令行(仅本机):
+ *   node tools/dayflowctl.mjs status             查看锁定状态/剩余时间
+ *   node tools/dayflowctl.mjs recover XXXX-XXXX  紧急解锁码解锁(任何时刻可用)
+ *
+ * 常规解锁没有命令行——解锁权在导师小舟手里:最短时长结束后去对话页找她聊天,
+ * 她同意才解锁。紧急解锁码在开启时生成于
+ * %APPDATA%/Dayflow/hardcore-recovery.txt,请交给信得过的人保管。
  * 端点信息来自 %APPDATA%/Dayflow/hardcore-unlock.json(锁定时生成)。
  */
 import fs from 'fs'
 import http from 'http'
 import os from 'os'
 import path from 'path'
+import readline from 'readline'
 
-const file = path.join(os.homedir(), 'AppData', 'Roaming', 'Dayflow', 'hardcore-unlock.json')
+const dir = path.join(os.homedir(), 'AppData', 'Roaming', 'Dayflow')
+const file = path.join(dir, 'hardcore-unlock.json')
+
+const fmtHr = (ms) => {
+  const h = Math.floor(ms / 3600_000)
+  const m = Math.floor((ms % 3600_000) / 60_000)
+  return h > 0 ? `${h} 小时 ${m} 分钟` : `${m} 分钟`
+}
+
+function request(method, urlPath, body) {
+  return new Promise((resolve, reject) => {
+    const payload = body == null ? null : JSON.stringify(body)
+    const req = http.request(
+      {
+        host: '127.0.0.1',
+        port: info.port,
+        path: urlPath,
+        method,
+        headers: payload ? { 'Content-Length': Buffer.byteLength(payload) } : {}
+      },
+      (res) => {
+        let data = ''
+        res.on('data', (c) => (data += c))
+        res.on('end', () => {
+          try {
+            resolve({ code: res.statusCode ?? 0, body: JSON.parse(data || '{}') })
+          } catch {
+            resolve({ code: res.statusCode ?? 0, body: {} })
+          }
+        })
+      }
+    )
+    req.on('error', reject)
+    if (payload) req.write(payload)
+    req.end()
+  })
+}
+
+function ask(question) {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
+  return new Promise((resolve) => rl.question(question, (a) => { rl.close(); resolve(a.trim()) }))
+}
+
+const [cmd, arg] = process.argv.slice(2)
 
 let info
 try {
   info = JSON.parse(fs.readFileSync(file, 'utf-8'))
 } catch {
-  console.error('未找到解锁端点信息(应用未开启强力监督)。')
+  console.error('未找到端点信息(应用未开启强力监督)。')
   process.exit(1)
 }
 
-const url = `http://127.0.0.1:${info.port}/status?token=${encodeURIComponent(info.token)}`
-http
-  .get(url, (res) => {
-    let data = ''
-    res.on('data', (c) => (data += c))
-    res.on('end', () => {
-      let b = {}
-      try {
-        b = JSON.parse(data || '{}')
-      } catch {}
-      if (!b.locked) {
-        console.log('未锁定。')
-        return
-      }
-      const ms = Math.max(0, Number(b.remainingMs) || 0)
-      const h = Math.floor(ms / 3600_000)
-      const m = Math.floor((ms % 3600_000) / 60_000)
-      console.log(`锁定中,剩余 ${h > 0 ? h + ' 小时 ' : ''}${m} 分钟。`)
-      console.log('解锁请到 Dayflow 对话页找小舟聊天(时间到了她同意才会解锁)。')
-    })
-  })
-  .on('error', (e) => {
+if (cmd === 'status') {
+  const r = await request('GET', `/status?token=${encodeURIComponent(info.token)}`).catch((e) => {
     console.error('无法连接状态端点:', e.message)
     process.exit(1)
   })
+  if (!r.body.locked) {
+    console.log('未锁定。')
+  } else {
+    console.log(`锁定中,剩余 ${fmtHr(Number(r.body.remainingMs) || 0)}。`)
+    console.log('常规解锁:到时间后去 Dayflow 对话页找小舟聊天(她同意才解锁)。')
+    console.log('紧急解锁:node tools/dayflowctl.mjs recover XXXX-XXXX(码在保管人手里)。')
+  }
+  process.exit(0)
+}
+
+if (cmd === 'recover') {
+  let code = (arg ?? '').trim()
+  if (!code) code = await ask('输入紧急解锁码(XXXX-XXXX): ')
+  const r = await request('POST', '/unlock', { token: info.token, code }).catch((e) => {
+    console.error('无法连接解锁端点:', e.message)
+    process.exit(1)
+  })
+  if (r.code === 200) {
+    console.log('已解锁,现在可以正常退出 Dayflow。')
+    process.exit(0)
+  }
+  if (r.code === 401) {
+    console.error('解锁码错误。')
+  } else {
+    console.error('解锁失败:', r.body.error ?? `HTTP ${r.code}`)
+  }
+  process.exit(1)
+}
+
+console.log('用法: node tools/dayflowctl.mjs [status | recover XXXX-XXXX]')
+process.exit(1)

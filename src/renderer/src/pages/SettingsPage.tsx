@@ -1220,11 +1220,12 @@ export default function SettingsPage({ onSaved }: { onSaved: () => void }): Reac
   )
 }
 
-/** 强力监督锁:锁定期间应用不可退出;到期后找导师小舟聊天,她同意才解锁。 */
+/** 强力监督锁:锁定期间应用不可退出;到期找小舟聊天解锁,紧急码交他人保管兜底。 */
 function HardcorePanel(): React.ReactElement {
   const [st, setSt] = useState<{ locked: boolean; remainingMs: number } | null>(null)
   const [hours, setHours] = useState(8)
   const [msg, setMsg] = useState('')
+  const [recovery, setRecovery] = useState<string | null>(null)
 
   const load = useCallback(() => {
     void window.dayflow.hardcoreStatus().then(setSt)
@@ -1247,7 +1248,12 @@ function HardcorePanel(): React.ReactElement {
 
   const enable = (): void => {
     void window.dayflow.hardcoreEnable(hours).then((r) => {
-      if (!r.ok) setMsg(r.error ?? '开启失败')
+      if (r.ok && r.recoveryCode) {
+        setRecovery(r.recoveryCode)
+        setMsg('')
+      } else {
+        setMsg(r.error ?? '开启失败')
+      }
       load()
     })
   }
@@ -1255,15 +1261,37 @@ function HardcorePanel(): React.ReactElement {
   return (
     <div className="panel">
       <div className="panel-title">强力监督锁</div>
-      {st?.locked ? (
+      {recovery ? (
+        <div className="settings-row">
+          <div>
+            <div className="settings-row-label" style={{ color: 'var(--green)' }}>
+              ✓ 强力监督已开启 · 紧急解锁码(只显示这一次)
+            </div>
+            <div
+              style={{ fontSize: 22, fontWeight: 700, letterSpacing: 4, margin: '8px 0', fontFamily: 'monospace' }}
+            >
+              {recovery}
+            </div>
+            <div className="settings-row-help">
+              把这个码交给信得过的人保管,然后删除本地文件
+              <code style={{ margin: '0 4px' }}>%APPDATA%\Dayflow\hardcore-recovery.txt</code>
+              ——自己留着等于没有锁。它只能在真实紧急情况用(任何时刻可解锁);日常请走常规流程:到期后和小舟聊天。
+            </div>
+            <button className="btn small" style={{ marginTop: 8 }} onClick={() => setRecovery(null)}>
+              我已交给保管人
+            </button>
+          </div>
+        </div>
+      ) : st?.locked ? (
         <div className="settings-row">
           <div>
             <div className="settings-row-label" style={{ color: 'var(--red)' }}>
               锁定中 · {fmtRemaining(st.remainingMs)}
             </div>
             <div className="settings-row-help">
-              退出被拦截:托盘退出、窗口关闭均不可用。到期后去对话页找小舟聊天,她同意才会解锁(没有密码,解锁权在她手里)。
-              命令行 node tools/dayflowctl.mjs status 可查剩余时间。任务管理器强杀无法阻止,这是一条自我承诺装置。
+              退出被拦截:托盘退出、窗口关闭均不可用。常规出口:到期后去对话页找小舟聊天,她同意才解锁;
+              紧急出口:保管人提供解锁码,命令行 node tools/dayflowctl.mjs recover XXXX-XXXX(任何时刻可用)。
+              任务管理器强杀无法阻止,这是一条自我承诺装置。
             </div>
           </div>
         </div>
@@ -1273,8 +1301,9 @@ function HardcorePanel(): React.ReactElement {
             <div>
               <div className="settings-row-label">最短锁定时长</div>
               <div className="settings-row-help">
-                开启后应用无法退出。解锁没有密码——由导师小舟生成并保管解锁指令:最短时长结束后,你在对话页找她聊天,
-                她结合你的学习状态判断,同意才解锁。时间没到时谁也解不开。
+                开启后应用无法退出,两条出口:① 常规——最短时长结束后去对话页找小舟聊天,她结合你的学习状态判断,
+                同意才解锁(解锁权在她手里,没有密码);② 紧急——开启时会生成一个解锁码写入文件,交给信得过的人保管,
+                任何时刻凭码可解锁,用于真实紧急情况。时间没到且没有码,谁也解不开。
               </div>
             </div>
             <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
