@@ -238,12 +238,15 @@ export default function ProjectsPage({ onDataChanged }: Props): React.ReactEleme
       setStatus('规则至少要填一个条件值')
       return
     }
-    void window.dayflow.createRule(project.id, ruleDraft).then((res) => {
-      setRuleDraft(null)
-      setStatus(`规则已创建，并回溯归类了 ${res.appliedCount} 段历史活动`)
-      load()
-      onDataChanged()
-    })
+    void window.dayflow
+      .createRule(project.id, ruleDraft)
+      .then((res) => {
+        setRuleDraft(null)
+        setStatus(`规则已创建，并回溯归类了 ${res.appliedCount} 段历史活动`)
+        load()
+        onDataChanged()
+      })
+      .catch((err) => setStatus(err.message))
   }
 
   const projRules = rules.filter((r) => r.projectId === selected)

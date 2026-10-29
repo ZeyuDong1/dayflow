@@ -1020,10 +1020,13 @@ export default function ActivitiesView({
   }, [activities])
 
   const assign = (activityId: number, projectId: number | null): void => {
-    void window.dayflow.assignActivity(activityId, projectId).then(() => {
-      load()
-      onDataChanged()
-    })
+    void window.dayflow.assignActivity(activityId, projectId).then(
+      () => {
+        load()
+        onDataChanged()
+      },
+      (err) => alert(err.message)
+    )
   }
 
   const toggleTreeExpand = (id: number): void =>
@@ -1035,7 +1038,14 @@ export default function ActivitiesView({
     })
 
   const assignIds = (ids: number[], projectId: number): void => {
-    void Promise.all(ids.map((id) => window.dayflow.assignActivity(id, projectId))).then(() => {
+    void Promise.all(
+      ids.map((id) =>
+        window.dayflow.assignActivity(id, projectId).catch((err) => {
+          alert(err.message)
+          return null
+        })
+      )
+    ).then(() => {
       load()
       onDataChanged()
     })
@@ -1086,6 +1096,7 @@ export default function ActivitiesView({
         load()
         onDataChanged()
       })
+      .catch((err) => alert(err.message))
   }
 
   const matchQuery = (app: string, title: string): boolean => {

@@ -291,8 +291,16 @@ export function registerIpc(win: BrowserWindow): void {
     return true
   })
 
+  // 强力监督:把内容归入"学习白名单类型"=自行加白名单,锁定期间禁止
+  // (规则/手动归类/批量归类都会影响判定或写入 classifications 记忆)
+  function assertNotWhitelistTarget(projectId: number): void {
+    if (hardcore.isLocked() && getSettings().tutor.allowedProjectIds.includes(projectId)) {
+      throw new Error('强力监督锁定中,不能把内容归入学习白名单类型(等同自行加白名单);可到对话页请小舟审批页面级豁免')
+    }
+  }
   ipcMain.handle('rules:list', () => projectsMod.listRules())
   ipcMain.handle('rules:create', (_e, projectId: number, conditions: RuleCondition[] | RuleNode) => {
+    assertNotWhitelistTarget(projectId)
     const rule = projectsMod.createRule(projectId, conditions)
     const applied = projectsMod.applyRuleRetroactively(rule)
     return { rule, appliedCount: applied }
@@ -304,12 +312,14 @@ export function registerIpc(win: BrowserWindow): void {
 
   ipcMain.handle('activities:day', (_e, day: string) => windowsPoll.getActivitiesForDay(day))
   ipcMain.handle('activities:assign', (_e, activityId: number, projectId: number | null) => {
+    if (projectId !== null) assertNotWhitelistTarget(projectId)
     windowsPoll.assignActivityProject(activityId, projectId, true)
     return true
   })
-  ipcMain.handle('activities:bulkAssign', (_e, appName: string, pattern: string, projectId: number) =>
-    windowsPoll.bulkAssign(appName, pattern, projectId)
-  )
+  ipcMain.handle('activities:bulkAssign', (_e, appName: string, pattern: string, projectId: number) => {
+    assertNotWhitelistTarget(projectId)
+    return windowsPoll.bulkAssign(appName, pattern, projectId)
+  })
   ipcMain.handle('review:unclassified', () => projectsMod.unclassifiedGroups())
   ipcMain.handle('review:aiGroup', async (_e, days = 7) => {
     try {

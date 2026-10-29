@@ -86,11 +86,14 @@ export default function ReviewPage({ focusProjectId }: { focusProjectId?: number
       setStatus('至少填一个条件')
       return
     }
-    void window.dayflow.createRule(draft.projectId, draft.tree).then((res) => {
-      setStatus(`规则已创建，并回溯归类了 ${res.appliedCount} 段历史活动`)
-      setDraft(null)
-      load()
-    })
+    void window.dayflow
+      .createRule(draft.projectId, draft.tree)
+      .then((res) => {
+        setStatus(`规则已创建，并回溯归类了 ${res.appliedCount} 段历史活动`)
+        setDraft(null)
+        load()
+      })
+      .catch((err) => setStatus(err.message))
   }
 
   const runAiGroup = (): void => {
@@ -138,7 +141,13 @@ export default function ReviewPage({ focusProjectId }: { focusProjectId?: number
         const children: RuleNode[] = []
         if (d.appName.trim()) children.push({ kind: 'cond', field: 'app', op: 'equals', value: d.appName.trim() })
         if (d.titleKw.trim()) children.push({ kind: 'cond', field: 'title', op: 'contains', value: d.titleKw.trim() })
-        const res = await window.dayflow.createRule(d.projectId ?? 0, { kind: 'all', children })
+        const res = await window.dayflow
+          .createRule(d.projectId ?? 0, { kind: 'all', children })
+          .catch((err) => {
+            setStatus(err.message)
+            return null
+          })
+        if (!res) return
         applied += res.appliedCount
       }
       setStatus(`已创建 ${picks.length} 条规则，回溯归类 ${applied} 段活动`)
@@ -151,10 +160,13 @@ export default function ReviewPage({ focusProjectId }: { focusProjectId?: number
   }
 
   const quickAssign = (g: RuleSuggestionItem, projectId: number): void => {
-    void window.dayflow.bulkAssign(g.appName, g.titlePattern, projectId).then((n) => {
-      setStatus(`已把 ${n} 段「${g.appName}」活动归入类型`)
-      load()
-    })
+    void window.dayflow
+      .bulkAssign(g.appName, g.titlePattern, projectId)
+      .then((n) => {
+        setStatus(`已把 ${n} 段「${g.appName}」活动归入类型`)
+        load()
+      })
+      .catch((err) => setStatus(err.message))
   }
 
   /** 项目下拉：层级缩进路径。 */

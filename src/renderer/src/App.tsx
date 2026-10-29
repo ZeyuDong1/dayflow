@@ -178,7 +178,9 @@ export default function App(): React.ReactElement {
     setDropTarget(null)
     if (!seg) return
     const assignAll = (): void => {
-      seg.ids.forEach((id) => void window.dayflow.assignActivity(id, projectId))
+      seg.ids.forEach((id) =>
+        void window.dayflow.assignActivity(id, projectId).catch((err) => alert(err.message))
+      )
       setTimeout(refresh, 250)
     }
     if (alt && projectId !== null) {
@@ -194,6 +196,7 @@ export default function App(): React.ReactElement {
           assignAll()
           alert(`已归类并创建规则（回溯 ${res.appliedCount} 段）`)
         })
+        .catch((err) => alert(err.message))
     } else {
       assignAll()
     }
