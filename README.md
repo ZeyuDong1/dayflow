@@ -1,8 +1,10 @@
-# Dayflow for Windows
+# Dayflow
 
 **本地优先的屏幕时间追踪 + 学习监督导师。** 自动记录你在电脑上做了什么,归类成你自己的「类型」体系;内置一位会唠叨、会反思、记得住你任务的学习导师(Agent),在你分心时按阶梯升级打断——从轻提醒一路到盖住整个窗口的强遮蔽面板。
 
-基于 [JerryZLiu/Dayflow](https://github.com/JerryZLiu/Dayflow)(macOS)的 Windows 移植(Electron),并融入了 EpochToDo 风格的任务系统。
+基于 [JerryZLiu/Dayflow](https://github.com/JerryZLiu/Dayflow)(macOS)的移植(Electron),并融入了 EpochToDo 风格的任务系统。
+
+> **当前支持 Windows 10/11**。macOS 请使用[原版 Dayflow](https://github.com/JerryZLiu/Dayflow);核心架构(Electron + React + sql.js + AI 管线)是跨平台的,移植到其他平台主要替换前台追踪/窗口几何/浏览器历史路径这几层(见 `src/main/foreground.ts`、`windows-poll.ts`、`browser-history.ts`)。
 
 ![活动页](docs/images/activities.png)
 
