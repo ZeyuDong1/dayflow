@@ -7,6 +7,8 @@
  * - 自动过期:7 天失效,需重新申请(防无人看管期滥用);
  * - 粒度:仅标题/应用关键词,不触碰类型级 allowedProjectIds(类型级曾出过全放行事故);
  * - 全程留痕:tutor_events + 聊天内可见确认,用户可申诉、可在设置页手动撤销。
+ * - 数据复核:关键词近 7 天匹配的活动若 60% 以上时长落在低效率分(≤3,游戏/娱乐)
+ *   类型,服务端直接拒绝——"Warframe 攻略"这类包装骗得过模型骗不过数据。
  */
 import { db } from './db'
 import { todayKey } from './paths'
@@ -114,6 +116,43 @@ export function allowanceAddByAgent(field: AllowanceField, value: string, reason
   if (active.some((a) => a.field === field && a.value.toLowerCase() === v.toLowerCase())) {
     return { ok: false, error: '已存在相同豁免' }
   }
+  // 数据复核(防话术):近 7 天匹配该关键词的活动若主要由低效率分类型构成,拒绝。
+  // 足量证据(≥10 分钟)才触发;新页面无历史时仍由 agent 判断。
+  const since = Date.now() - 7 * 86400_000
+  const like = `%${v.replace(/[\\%_]/g, (m) => '\\' + m)}%`
+  const evRows =
+    field === 'app'
+      ? db.all<{ project_id: number | null; ms: number }>(
+          `SELECT project_id, SUM(end_ts - start_ts) AS ms FROM app_activities
+           WHERE is_deleted = 0 AND is_idle = 0 AND start_ts >= ? AND app_name LIKE ? ESCAPE '\\'
+           GROUP BY project_id`,
+          [since, like]
+        )
+      : db.all<{ project_id: number | null; ms: number }>(
+          `SELECT project_id, SUM(end_ts - start_ts) AS ms FROM app_activities
+           WHERE is_deleted = 0 AND is_idle = 0 AND start_ts >= ? AND title LIKE ? ESCAPE '\\'
+           GROUP BY project_id`,
+          [since, like]
+        )
+  const evTotal = evRows.reduce((a, r) => a + r.ms, 0)
+  if (evTotal >= 10 * 60_000) {
+    const scoreOf = (id: number | null): number =>
+      id == null
+        ? 4
+        : (db.get<{ productivity_score: number }>('SELECT productivity_score FROM projects WHERE id = ?', [
+            id
+          ])?.productivity_score ?? 4)
+    const lowMs = evRows.reduce((a, r) => a + (scoreOf(r.project_id) <= 3 ? r.ms : 0), 0)
+    if (lowMs / evTotal >= 0.6) {
+      const pct = Math.round((lowMs / evTotal) * 100)
+      logEvent('allowance-reject-data', `${field}:${v} · 低效率占比 ${pct}%`)
+      return {
+        ok: false,
+        error: `数据核实不通过:该关键词近 7 天的活动 ${pct}% 属于低效率分类型(游戏/娱乐等),不能加入学习白名单`
+      }
+    }
+  }
+
   const day = todayKey()
   if (store.quotaDay !== day) {
     store.quotaDay = day
