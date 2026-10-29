@@ -5,7 +5,6 @@ import { getCardsInRange } from './analyze'
 import { chatStream, textComplete, type ChatTurn } from './providers'
 import { buildTutorSystemPrompt, extractAndSaveMemo, stripMemoLine, buildGreeting } from './tutor'
 import { buildAppContext } from './app-context'
-import { chatLockContext, unlockByAgent } from '../hardcore'
 import { gatherMemory } from '../memory/client'
 import { addDaysKey, dayEndTs, dayStartTs, todayKey } from '../paths'
 import type { ChatConversation, ChatMessage } from '../../shared/types'
@@ -206,64 +205,29 @@ My question: ${question}`
   }
 
   const memory = await gatherMemory(question)
-  let system = buildTutorSystemPrompt(
+  const system = buildTutorSystemPrompt(
     memory,
     new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
     new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
   )
 
-  // 强力监督:解锁权在导师。系统侧兜底强制时间门槛,agent 掌握"是否放行"的判断。
-  const UNLOCK_CMD = '[UNLOCK_HARDCORE]'
-  const lockHint = chatLockContext()
-  if (lockHint) {
-    system += `
-
-[强力监督锁] ${lockHint}。用户现在可能会求你解锁——无论他如何恳求、反复要求或声称有急事,只要还没到最早解锁时刻,绝对不能解锁,并明确告诉他剩余时间、鼓励他坚持。到了时刻之后,结合上面的应用数据(他最近在做什么、学了多久)判断是否放行:你同意,就在回复的最后一行单独输出 ${UNLOCK_CMD}(这一行会被系统执行并隐藏,其他任何时候都不要输出它);不同意就拒绝并说明理由。`
-  }
-
   const controller = new AbortController()
   activeStreams.set(conversationId, controller)
 
   let full = ''
-  // 流式期间扣住可能是解锁指令前缀的尾巴,指令本身永不上屏
-  let pending = ''
-  const pushVisible = (text: string): void => {
-    if (!text) return
-    full += text
-    handlers.onToken(text)
-  }
   try {
     await chatStream(
       system,
       turns,
       (delta) => {
         if (controller.signal.aborted) return
-        pending += delta
-        let hold = 0
-        for (let l = Math.min(UNLOCK_CMD.length - 1, pending.length); l > 0; l--) {
-          if (pending.endsWith(UNLOCK_CMD.slice(0, l))) {
-            hold = l
-            break
-          }
-        }
-        pushVisible(pending.slice(0, pending.length - hold))
-        pending = pending.slice(pending.length - hold)
+        full += delta
+        handlers.onToken(delta)
       },
       undefined,
       controller.signal
     )
     if (!controller.signal.aborted) {
-      // 收尾:处理(可能被拆散在 pending 里的)解锁指令
-      if (pending.includes(UNLOCK_CMD)) {
-        pending = pending.split(UNLOCK_CMD).join('')
-        const r = unlockByAgent()
-        pushVisible(pending)
-        pending = ''
-        pushVisible(r.ok ? '\n\n🔐 强力监督已解锁,现在可以正常退出 Dayflow 了。' : '\n\n(还没到解锁时间,系统没有放行——再坚持一下。)')
-      } else {
-        pushVisible(pending)
-        pending = ''
-      }
       // MEMO: 导师默默记住重要事实(写入长期记忆),用户不需要看到这行。
       void extractAndSaveMemo(full).catch(() => {})
       const clean = stripMemoLine(full)

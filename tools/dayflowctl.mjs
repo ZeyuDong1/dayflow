@@ -4,8 +4,8 @@
  *   node tools/dayflowctl.mjs status             查看锁定状态/剩余时间
  *   node tools/dayflowctl.mjs recover XXXX-XXXX  紧急解锁码解锁(任何时刻可用)
  *
- * 常规解锁没有命令行——解锁权在导师小舟手里:最短时长结束后去对话页找她聊天,
- * 她同意才解锁。紧急解锁码在开启时生成于
+ * 时长内用户无法解锁,只有紧急码能解;到期自动解锁,无需任何操作。
+ * 紧急解锁码在开启时生成于
  * %APPDATA%/Dayflow/hardcore-recovery.txt,请交给信得过的人保管。
  * 端点信息来自 %APPDATA%/Dayflow/hardcore-unlock.json(锁定时生成)。
  */
@@ -77,8 +77,7 @@ if (cmd === 'status') {
     console.log('未锁定。')
   } else {
     console.log(`锁定中,剩余 ${fmtHr(Number(r.body.remainingMs) || 0)}。`)
-    console.log('常规解锁:到时间后去 Dayflow 对话页找小舟聊天(她同意才解锁)。')
-    console.log('紧急解锁:node tools/dayflowctl.mjs recover XXXX-XXXX(码在保管人手里)。')
+    console.log('到期将自动解锁。紧急情况凭码:node tools/dayflowctl.mjs recover XXXX-XXXX(码在保管人手里)。')
   }
   process.exit(0)
 }

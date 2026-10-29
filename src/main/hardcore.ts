@@ -1,10 +1,9 @@
 /**
  * 强力监督锁(用户定):开启后到「最短锁定时长」结束前,应用无法被正常退出——
- * 窗口关闭仍走托盘常驻;托盘退出/App quit 一律拦截。唯一出口是找导师小舟聊天:
- * 到时间后她结合你的学习状态判断,同意才在回复里带上解锁指令,由系统执行。
- * 另留一条绝对出口:开启时生成紧急解锁码写入文件,交给他人保管;凭码任何时刻
- * (不受最短时长限制)可命令行解锁,用于 agent 误判或真实紧急情况。
- * 防君子不防小人:任务管理器杀进程挡不住,这是一条自我承诺装置,不是操作系统级防护。
+ * 窗口关闭仍走托盘常驻;托盘退出/App quit 一律拦截;时长内用户自己解不开,
+ * 唯一出口是保管人凭紧急解锁码命令行解锁。时长一到自动解锁,无需密码无需聊天。
+ * 紧急码在开启时生成写入文件,交给他人保管。防君子不防小人:任务管理器杀进程
+ * 挡不住,这是一条自我承诺装置,不是操作系统级防护。
  *
  * 状态查询端点:127.0.0.1 /status(端口+token 写在 <userData>/hardcore-unlock.json),
  * 供 CLI 查剩余时间。
@@ -56,7 +55,9 @@ export interface HardcoreStatus {
   remainingMs: number
 }
 
+/** 锁定状态(查询时顺带触发到时自动解锁)。 */
 export function status(): HardcoreStatus {
+  maybeAutoUnlock()
   return {
     locked: state.enabled,
     unlockAfterTs: state.unlockAfterTs,
@@ -81,6 +82,7 @@ export function enable(minHours: number): { ok: boolean; error?: string; recover
   }
   persist()
   startUnlockServer()
+  if (!autoTimer) autoTimer = setInterval(maybeAutoUnlock, 30_000)
   try {
     fs.writeFileSync(
       recoveryFilePath(),
@@ -130,6 +132,10 @@ function doUnlock(): void {
   state.enabled = false
   state.recoverHash = null
   persist()
+  if (autoTimer) {
+    clearInterval(autoTimer)
+    autoTimer = null
+  }
   stopUnlockServer()
   try {
     fs.unlinkSync(recoveryFilePath())
@@ -139,19 +145,9 @@ function doUnlock(): void {
   onUnlockedCb?.()
 }
 
-/** 导师聊天解锁(agent 决定):时间未到一律拒绝;到了即放行——判断权在 agent 是否发出指令。 */
-export function unlockByAgent(): { ok: boolean; error?: string } {
-  if (!state.enabled) return { ok: false, error: 'not-locked' }
-  if (Date.now() < state.unlockAfterTs) return { ok: false, error: 'too-early' }
-  doUnlock()
-  return { ok: true }
-}
-
-/** 导师聊天系统提示注入:锁定上下文(最早解锁时刻)。 */
-export function chatLockContext(): string {
-  if (!state.enabled) return ''
-  const t = new Date(state.unlockAfterTs).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' })
-  return `最早解锁时刻:${t}`
+/** 到时自动解锁:锁定中且已过最短时长 → 解锁(幂等,随处可调)。 */
+export function maybeAutoUnlock(): void {
+  if (state.enabled && Date.now() >= state.unlockAfterTs) doUnlock()
 }
 
 
@@ -236,6 +232,7 @@ function stopUnlockServer(): void {
 
 /** 应用退出拦截:锁定中且非放行场景 → 阻止并提示剩余时间。 */
 export function interceptQuit(e: { preventDefault: () => void }): void {
+  maybeAutoUnlock()
   if (!state.enabled) return
   e.preventDefault()
   const remain = Math.max(0, state.unlockAfterTs - Date.now())
@@ -251,10 +248,16 @@ export function interceptQuit(e: { preventDefault: () => void }): void {
 }
 
 /** 启动时调用:载入状态,锁定中则拉起 unlock 端点。 */
+let autoTimer: NodeJS.Timeout | null = null
+
 export function initHardcore(onUnlocked: () => void): void {
   onUnlockedCb = onUnlocked
   load()
-  if (state.enabled) startUnlockServer()
+  maybeAutoUnlock()
+  if (state.enabled) {
+    startUnlockServer()
+    autoTimer = setInterval(maybeAutoUnlock, 30_000) // 跨过解锁时刻后 30s 内自动放行
+  }
 }
 
 export function stopHardcore(): void {
