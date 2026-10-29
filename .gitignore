@@ -9,3 +9,4 @@ vendor/ai-memory/.tmp/
 *.log
 .DS_Store
 .demo-data/
+release-build2/
