@@ -7,6 +7,7 @@ import { buildTutorSystemPrompt, extractAndSaveMemo, stripMemoLine, buildGreetin
 import { buildAppContext } from './app-context'
 import { gatherMemory } from '../memory/client'
 import { allowanceChatContext, allowanceAddByAgent, allowanceRevoke } from '../allowances'
+import { keywordCheck } from './keyword-check'
 import { addDaysKey, dayEndTs, dayStartTs, todayKey } from '../paths'
 import type { ChatConversation, ChatMessage } from '../../shared/types'
 
@@ -286,12 +287,24 @@ ${allowanceChatContext()}
             const field = add[1].toLowerCase() as 'title' | 'app'
             const value = add[2].trim()
             const reason = add[3].trim()
-            const r = allowanceAddByAgent(field, value, reason)
-            notes.push(
-              r.ok && r.entry
-                ? `🛡 已加入学习白名单(10 分钟后生效,7 天有效):「${field === 'app' ? '应用' : '标题'}含 ${value}」— 理由:${r.entry.reason}`
-                : `🛡 白名单加入未通过系统校验:${r.error ?? '未知原因'}`
-            )
+            // 语义前哨:先弄清关键词是什么(检索/常识),娱乐内容直接拒
+            const v = await keywordCheck(value)
+            if (v.verdict === 'entertainment') {
+              db.run(
+                'INSERT INTO tutor_events (ts, type, app_name, title, detail) VALUES (?, ?, ?, ?, ?)',
+                [Date.now(), 'allowance-reject-keyword', null, null, `${value} · ${v.kind}`]
+              )
+              notes.push(
+                `🛡 白名单拒绝:「${value}」被识别为「${v.kind || '娱乐内容'}」(娱乐/消遣内容),不能加入学习白名单${v.evidence ? ' — 依据:' + v.evidence : ''}`
+              )
+            } else {
+              const r = allowanceAddByAgent(field, value, reason)
+              notes.push(
+                r.ok && r.entry
+                  ? `🛡 已加入学习白名单(10 分钟后生效,7 天有效):「${field === 'app' ? '应用' : '标题'}含 ${value}」— 理由:${r.entry.reason}`
+                  : `🛡 白名单加入未通过系统校验:${r.error ?? '未知原因'}`
+              )
+            }
           } else if (rem) {
             const r = allowanceRevoke(Number(rem[1]), 'agent', rem[2])
             notes.push(
