@@ -8,3 +8,4 @@ vendor/ai-memory/.tmp/
 *.tsbuildinfo
 *.log
 .DS_Store
+.demo-data/

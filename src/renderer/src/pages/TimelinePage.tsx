@@ -197,6 +197,7 @@ interface ANode {
 }
 
 function fmtDur(min: number): string {
+  if (!Number.isFinite(min)) return '—'
   const m = Math.max(1, Math.round(min))
   const h = Math.floor(m / 60)
   return h > 0 ? `${h}h ${m % 60}m` : `${m}m`
@@ -266,7 +267,7 @@ function ActivityTree({
     byProj.set(pkey, P)
   }
   for (const t of tasks) {
-    const min = ((t.endTs ?? Date.now()) - t.startTs) / 60000
+    const min = ((t.endTs ?? Date.now()) - (t.startTs ?? Date.now())) / 60000
     const pkey = String(t.projectId ?? 'null')
     const P = byProj.get(pkey) ?? { minutes: 0, projId: t.projectId, ids: [] as number[], byApp: new Map() }
     P.minutes += min
