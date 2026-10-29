@@ -4,7 +4,7 @@
 
 **本地优先的屏幕时间追踪 + 学习监督导师。** 自动记录你在电脑上做了什么,归类成你自己的「类型」体系;内置一位会唠叨、会反思、记得住你任务的学习导师(Agent),在你分心时按阶梯升级打断——从轻提醒一路到盖住整个窗口的强遮蔽面板。
 
-基于 [JerryZLiu/Dayflow](https://github.com/JerryZLiu/Dayflow)(macOS)的移植(Electron),并融入了 EpochToDo 风格的任务系统。
+基于 [JerryZLiu/Dayflow](https://github.com/JerryZLiu/Dayflow)(macOS)的移植(Electron),并融入了 EpochToDo 风格的任务系统。功能设计上大量参考了 [Timing](https://timingapp.com)——规则引擎、活动树、浏览器按页面归类等机制均沿袭自它。
 
 > **Windows 10/11 提供安装包;macOS 需自行编译**——核心架构(Electron + React + sql.js + AI 管线)是跨平台的,平台相关层只有前台追踪/窗口几何/浏览器历史路径几处(见 `src/main/foreground.ts`、`windows-poll.ts`、`browser-history.ts`)。
 

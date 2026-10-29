@@ -4,7 +4,7 @@
 
 **Local-first screen time tracking with a learning-tutor agent.** Dayflow quietly records what you do on your computer and organizes it into your own category system. A built-in tutor agent — one that nags, reflects, and remembers your tasks — interrupts you on an escalating ladder when you drift: from a gentle desktop nudge all the way to a full-window blocking overlay.
 
-A port of [JerryZLiu/Dayflow](https://github.com/JerryZLiu/Dayflow) (macOS) built on Electron, with an EpochToDo-style task system folded in.
+A port of [JerryZLiu/Dayflow](https://github.com/JerryZLiu/Dayflow) (macOS) built on Electron, with an EpochToDo-style task system folded in. The functional design draws heavily on [Timing](https://timingapp.com) — the rule engine, activity tree, and per-page browser classification all follow its lead.
 
 > **Installers are provided for Windows 10/11; on macOS, build from source** — the core architecture (Electron + React + sql.js + AI pipeline) is cross-platform, and only a few layers are OS-specific (see `src/main/foreground.ts`, `windows-poll.ts`, `browser-history.ts`).
 
