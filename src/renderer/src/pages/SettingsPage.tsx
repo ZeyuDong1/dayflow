@@ -1249,12 +1249,11 @@ export default function SettingsPage({ onSaved }: { onSaved: () => void }): Reac
   )
 }
 
-/** 强力监督锁:时长内仅保管人凭紧急码可解,到期自动解锁;码永久有效,可重新生成。 */
+/** 强力监督锁:时长内仅保管人凭紧急码可解,到期自动解锁;码只在文件里,UI 不显示。 */
 function HardcorePanel(): React.ReactElement {
   const [st, setSt] = useState<{ locked: boolean; remainingMs: number; hasRecovery: boolean } | null>(null)
   const [hours, setHours] = useState(8)
   const [msg, setMsg] = useState('')
-  const [recovery, setRecovery] = useState<{ code: string; note: string } | null>(null)
 
   const load = useCallback(() => {
     void window.dayflow.hardcoreStatus().then(setSt)
@@ -1276,11 +1275,14 @@ function HardcorePanel(): React.ReactElement {
   }
 
   const enable = (): void => {
+    const first = !st?.hasRecovery
     void window.dayflow.hardcoreEnable(hours).then((r) => {
       if (r.ok) {
-        setMsg('')
-        if (r.recoveryCode) setRecovery({ code: r.recoveryCode, note: '首次生成的紧急解锁码(只显示这一次):' })
-        else setMsg('已开启(紧急解锁码沿用你之前交给保管人的那一份)')
+        setMsg(
+          first
+            ? '已开启。紧急解锁码已写入 %APPDATA%\Dayflow\hardcore-recovery.txt——把这份文件交给信得过的人保管,然后删除本地副本(自己留着等于没有锁)。'
+            : '已开启(紧急解锁码沿用此前那份)。'
+        )
       } else {
         setMsg(r.error ?? '开启失败')
       }
@@ -1290,8 +1292,8 @@ function HardcorePanel(): React.ReactElement {
 
   const regenerate = (): void => {
     void window.dayflow.hardcoreRegenerate().then((r) => {
-      if (r.ok && r.recoveryCode) {
-        setRecovery({ code: r.recoveryCode, note: '已重新生成,旧码立即失效。新码(只显示这一次):' })
+      if (r.ok) {
+        setMsg('已重新生成:旧码立即失效,新码已写入 hardcore-recovery.txt——把新文件重新交给保管人。')
       } else {
         setMsg(r.error ?? '重新生成失败')
       }
@@ -1302,28 +1304,7 @@ function HardcorePanel(): React.ReactElement {
   return (
     <div className="panel">
       <div className="panel-title">强力监督锁</div>
-      {recovery ? (
-        <div className="settings-row">
-          <div>
-            <div className="settings-row-label" style={{ color: 'var(--green)' }}>
-              ✓ {recovery.note}
-            </div>
-            <div
-              style={{ fontSize: 22, fontWeight: 700, letterSpacing: 4, margin: '8px 0', fontFamily: 'monospace' }}
-            >
-              {recovery.code}
-            </div>
-            <div className="settings-row-help">
-              这个码长期有效(直到下次重新生成),任何时刻可命令行解锁。把它交给信得过的人保管,然后删除本地文件
-              <code style={{ margin: '0 4px' }}>%APPDATA%\Dayflow\hardcore-recovery.txt</code>
-              ——自己留着等于没有锁。
-            </div>
-            <button className="btn small" style={{ marginTop: 8 }} onClick={() => setRecovery(null)}>
-              我已交给保管人
-            </button>
-          </div>
-        </div>
-      ) : st?.locked ? (
+      {st?.locked ? (
         <div className="settings-row">
           <div>
             <div className="settings-row-label" style={{ color: 'var(--red)' }}>
@@ -1362,10 +1343,10 @@ function HardcorePanel(): React.ReactElement {
           <div className="settings-row">
             <span style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
               <button className="btn primary small" onClick={enable}>
-                {st?.hasRecovery ? '开启强力监督' : '开启强力监督(将生成紧急解锁码)'}
+                {st?.hasRecovery ? '开启强力监督' : '开启强力监督(将生成紧急解锁码文件)'}
               </button>
               {st?.hasRecovery && (
-                <button className="btn small" onClick={regenerate} title="旧码立即失效,新码重新交给保管人">
+                <button className="btn small" onClick={regenerate} title="旧码立即失效,新码写入文件,重新交给保管人">
                   重新生成紧急解锁码
                 </button>
               )}

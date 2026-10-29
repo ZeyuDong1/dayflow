@@ -85,8 +85,8 @@ export function status(): HardcoreStatus {
   }
 }
 
-/** 开启强力监督:立刻生效,最短时长内无法解锁。返回一次性展示的紧急解锁码。 */
-export function enable(minHours: number): { ok: boolean; error?: string; recoveryCode?: string } {
+/** 开启强力监督:立刻生效,最短时长内无法解锁。紧急码只写入文件,不经 UI 展示。 */
+export function enable(minHours: number): { ok: boolean; error?: string } {
   if (state.enabled) return { ok: false, error: '已处于强力监督中' }
   if (!(minHours > 0) || minHours > 24 * 30) return { ok: false, error: '时长需在 0-720 小时之间' }
   let code: string | null = null
@@ -105,7 +105,7 @@ export function enable(minHours: number): { ok: boolean; error?: string; recover
   persist()
   startUnlockServer()
   if (!autoTimer) autoTimer = setInterval(maybeAutoUnlock, 30_000)
-  return { ok: true, recoveryCode: code ?? undefined }
+  return { ok: true }
 }
 
 /** 紧急码文件内容。 */
@@ -128,8 +128,8 @@ function writeRecoveryFile(code: string): void {
   )
 }
 
-/** 重新生成紧急解锁码:旧码立即失效。锁定中禁止(新码会暴露给被锁的自己)。 */
-export function regenerateRecovery(): { ok: boolean; error?: string; recoveryCode?: string } {
+/** 重新生成紧急解锁码:旧码立即失效,新码只写入文件。锁定中禁止(否则用户可读文件自解)。 */
+export function regenerateRecovery(): { ok: boolean; error?: string } {
   if (state.enabled) return { ok: false, error: '锁定中不能重新生成紧急码' }
   const raw = crypto.randomBytes(4).toString('hex').toUpperCase()
   const code = `${raw.slice(0, 4)}-${raw.slice(4)}`
@@ -139,7 +139,7 @@ export function regenerateRecovery(): { ok: boolean; error?: string; recoveryCod
   persist()
   writeRecoveryFile(code)
   logEvent('recovery-regenerate', '')
-  return { ok: true, recoveryCode: code }
+  return { ok: true }
 }
 
 function normCode(code: string): string {
