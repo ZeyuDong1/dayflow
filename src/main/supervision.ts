@@ -114,15 +114,18 @@ function isPrivate(appName: string, title: string): boolean {
   )
 }
 
-/** 学习/分心判定:白名单优先,否则按项目效率分;未归类不打扰。 */
 function judge(fg: ForegroundInfo): Judge {
-  const settings = getSettings()
   if (fg.windowTitle === '学习监督') return 'neutral' // 打断面板自己
   if (/dayflow/i.test(fg.appName)) return 'neutral' // Dayflow 自身(设置/查看时间线)
-  if (isPrivate(fg.appName, fg.windowTitle)) return 'neutral'
-  // agent 审批的页面级豁免优先于一切分类(冷却期未到不生效)
-  if (matchAllowance(fg.appName, fg.windowTitle)) return 'learning'
-  const projectId = classifyActivity(fg.appName, fg.windowTitle)
+  return judgeInfo(fg.appName, fg.windowTitle)
+}
+
+/** 按应用+标题判定(遮蔽轮询对被遮窗口当前内容复判用)。 */
+function judgeInfo(appName: string, title: string): Judge {
+  const settings = getSettings()
+  if (isPrivate(appName, title)) return 'neutral'
+  if (matchAllowance(appName, title)) return 'learning'
+  const projectId = classifyActivity(appName, title)
   if (projectId === null) return 'neutral'
   const allowed = settings.tutor.allowedProjectIds
   if (allowed.includes(projectId)) return 'learning'
@@ -370,6 +373,7 @@ function showInterrupt(ep: Episode, geom: WindowGeom): void {
   // 用户不知道现在底下是哪个页面(浏览器同窗口换标签 hwnd 不变,只能轮询标题)
   let liveTargetTitle = ''
   let liveTargetUrl: string | null = null
+  let learningStrikes = 0 // 当前内容连续判为学习的次数
   overlayTimer = setInterval(() => {
     if (!interruptWin || interruptWin.isDestroyed()) return
     if (!isWindowUsable(targetHwnd)) {
@@ -415,6 +419,19 @@ function showInterrupt(ep: Episode, geom: WindowGeom): void {
     }
     // 预览期:只演示"最小化/关闭即消失",切走不关(方便慢慢看效果)
     if (Date.now() < previewUntil) return
+    // 违规解除自查:被遮窗口换了内容(关网页/换标签,hwnd 不变)后,当前标题
+    // 若已判为学习(白名单/豁免/效率分),连续两次确认即跟随关闭。
+    // 之后若再回到违规内容,常规监督会重新升级打断(切回 10 分钟内立即重覆盖)。
+    if (liveTargetTitle && judgeInfo(ep.appName, liveTargetTitle) === 'learning') {
+      learningStrikes += 1
+      if (learningStrikes >= 2) {
+        logEvent('interrupt-auto-close', ep.appName, liveTargetTitle, '当前内容已回到学习范围')
+        closeInterrupt()
+        return
+      }
+    } else {
+      learningStrikes = 0
+    }
     const fg = getForegroundInfoSync()
     if (!fg) return
     const selfOrTarget =
