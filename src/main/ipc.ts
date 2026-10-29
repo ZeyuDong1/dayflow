@@ -219,7 +219,7 @@ export function registerIpc(win: BrowserWindow): void {
   ipcMain.handle('supervision:interruptState', () => supervision.getInterruptState())
   // 强力监督锁
   ipcMain.handle('hardcore:status', () => hardcore.status())
-  ipcMain.handle('hardcore:enable', (_e, password: string, minHours: number) => hardcore.enable(password, minHours))
+  ipcMain.handle('hardcore:enable', (_e, minHours: number) => hardcore.enable(minHours))
   // 强打断面板出口:最小化/关闭被覆盖的应用(等价标题栏按钮,面板盖住了它们)
   ipcMain.handle('supervision:minimizeTarget', () => supervision.minimizeInterruptTarget())
   // 会话开始询问

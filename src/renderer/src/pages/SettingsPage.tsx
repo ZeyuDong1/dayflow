@@ -1220,11 +1220,9 @@ export default function SettingsPage({ onSaved }: { onSaved: () => void }): Reac
   )
 }
 
-/** 强力监督锁:锁定期间应用不可退出,到期后用命令行 dayflowctl unlock 解锁。 */
+/** 强力监督锁:锁定期间应用不可退出;到期后找导师小舟聊天,她同意才解锁。 */
 function HardcorePanel(): React.ReactElement {
-  const [st, setSt] = useState<{ locked: boolean; unlockAfterTs: number; remainingMs: number } | null>(null)
-  const [pw, setPw] = useState('')
-  const [pw2, setPw2] = useState('')
+  const [st, setSt] = useState<{ locked: boolean; remainingMs: number } | null>(null)
   const [hours, setHours] = useState(8)
   const [msg, setMsg] = useState('')
 
@@ -1232,7 +1230,6 @@ function HardcorePanel(): React.ReactElement {
     void window.dayflow.hardcoreStatus().then(setSt)
   }, [])
   useEffect(load, [load])
-  // 锁定中每 30s 刷一次剩余时间
   useEffect(() => {
     if (!st?.locked) return
     const iv = setInterval(() => {
@@ -1242,23 +1239,15 @@ function HardcorePanel(): React.ReactElement {
   }, [st?.locked])
 
   const fmtRemaining = (ms: number): string => {
-    if (ms <= 0) return '已到期(可用命令行解锁)'
+    if (ms <= 0) return '已到期(去和小舟聊天解锁)'
     const h = Math.floor(ms / 3600_000)
     const m = Math.floor((ms % 3600_000) / 60_000)
     return h > 0 ? `剩 ${h} 小时 ${m} 分钟` : `剩 ${m} 分钟`
   }
 
   const enable = (): void => {
-    if (!pw || pw.length < 4) return setMsg('密码至少 4 位')
-    if (pw !== pw2) return setMsg('两次输入的密码不一致')
-    void window.dayflow.hardcoreEnable(pw, hours).then((r) => {
-      if (r.ok) {
-        setPw('')
-        setPw2('')
-        setMsg('')
-      } else {
-        setMsg(r.error ?? '开启失败')
-      }
+    void window.dayflow.hardcoreEnable(hours).then((r) => {
+      if (!r.ok) setMsg(r.error ?? '开启失败')
       load()
     })
   }
@@ -1267,50 +1256,26 @@ function HardcorePanel(): React.ReactElement {
     <div className="panel">
       <div className="panel-title">强力监督锁</div>
       {st?.locked ? (
-        <>
-          <div className="settings-row">
-            <div>
-              <div className="settings-row-label" style={{ color: 'var(--red)' }}>
-                锁定中 · {fmtRemaining(st.remainingMs)}
-              </div>
-              <div className="settings-row-help">
-                退出被拦截:托盘退出、窗口关闭均不可用。到期后在本机命令行执行
-                <code style={{ margin: '0 4px' }}>node tools/dayflowctl.mjs unlock</code>
-                输入密码解锁。注意:任务管理器强杀进程无法阻止,这是一条自我承诺装置。
-              </div>
+        <div className="settings-row">
+          <div>
+            <div className="settings-row-label" style={{ color: 'var(--red)' }}>
+              锁定中 · {fmtRemaining(st.remainingMs)}
+            </div>
+            <div className="settings-row-help">
+              退出被拦截:托盘退出、窗口关闭均不可用。到期后去对话页找小舟聊天,她同意才会解锁(没有密码,解锁权在她手里)。
+              命令行 node tools/dayflowctl.mjs status 可查剩余时间。任务管理器强杀无法阻止,这是一条自我承诺装置。
             </div>
           </div>
-        </>
+        </div>
       ) : (
         <>
           <div className="settings-row">
             <div>
-              <div className="settings-row-label">锁定密码</div>
-              <div className="settings-row-help">
-                开启后应用无法退出,直到最短时长结束;届时用命令行 + 此密码解锁。密码只存哈希,忘掉即无法优雅退出。
-              </div>
-            </div>
-            <span style={{ display: 'flex', gap: 6 }}>
-              <input
-                type="password"
-                placeholder="设置密码"
-                value={pw}
-                onChange={(e) => setPw(e.target.value)}
-                style={{ width: 130, padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border-strong)' }}
-              />
-              <input
-                type="password"
-                placeholder="再输一遍"
-                value={pw2}
-                onChange={(e) => setPw2(e.target.value)}
-                style={{ width: 130, padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border-strong)' }}
-              />
-            </span>
-          </div>
-          <div className="settings-row">
-            <div>
               <div className="settings-row-label">最短锁定时长</div>
-              <div className="settings-row-help">此时间内连命令行也无法解锁。</div>
+              <div className="settings-row-help">
+                开启后应用无法退出。解锁没有密码——由导师小舟生成并保管解锁指令:最短时长结束后,你在对话页找她聊天,
+                她结合你的学习状态判断,同意才解锁。时间没到时谁也解不开。
+              </div>
             </div>
             <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <input
