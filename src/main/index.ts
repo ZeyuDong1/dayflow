@@ -24,6 +24,7 @@ import { createTodoRuntime } from './todo/wiring'
 import { installAppMenu } from './menu'
 import { updateTray, destroyTray } from './tray'
 import { startWindowTracking, stopWindowTracking } from './windows-poll'
+import { initHardcore, stopHardcore, interceptQuit } from './hardcore'
 import { loadAppIcons } from './app-icons'
 import { ensureDefaultProjects } from './projects'
 import { classifyBacklogApps } from './ai/llm-classify'
@@ -143,6 +144,7 @@ if (!gotLock) {
     startPipeline()
     startCleanupSchedule()
     applyLoginItem()
+    initHardcore(() => updateTray(showMainWindow))
     updateTray(showMainWindow)
 
     // 记忆侧车(ai-memory) + 知识库种子 + 导师反思循环 + 学习监督。
@@ -232,7 +234,10 @@ if (!gotLock) {
   })
 }
 
-app.on('before-quit', () => {
+app.on('before-quit', (e) => {
+  // 强力监督:锁定中拦截退出(弹提示),被拦时不做任何清理,应用继续常驻
+  interceptQuit(e)
+  if (e.defaultPrevented) return
   isQuitting = true
   stopCapture()
   stopWindowTracking()
@@ -245,6 +250,7 @@ app.on('before-quit', () => {
 })
 
 app.on('will-quit', () => {
+  stopHardcore()
   db.flush()
   db.close()
   destroyTray()

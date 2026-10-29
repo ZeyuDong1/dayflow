@@ -720,6 +720,7 @@ export default function SettingsPage({ onSaved }: { onSaved: () => void }): Reac
             </span>
           </div>
         </div>
+        <HardcorePanel />
         <div className="panel">
           <div className="panel-title">监督打断节奏</div>
           <div className="settings-row">
@@ -1214,6 +1215,125 @@ export default function SettingsPage({ onSaved }: { onSaved: () => void }): Reac
             </div>
           </div>
         </div>
+      )}
+    </div>
+  )
+}
+
+/** 强力监督锁:锁定期间应用不可退出,到期后用命令行 dayflowctl unlock 解锁。 */
+function HardcorePanel(): React.ReactElement {
+  const [st, setSt] = useState<{ locked: boolean; unlockAfterTs: number; remainingMs: number } | null>(null)
+  const [pw, setPw] = useState('')
+  const [pw2, setPw2] = useState('')
+  const [hours, setHours] = useState(8)
+  const [msg, setMsg] = useState('')
+
+  const load = useCallback(() => {
+    void window.dayflow.hardcoreStatus().then(setSt)
+  }, [])
+  useEffect(load, [load])
+  // 锁定中每 30s 刷一次剩余时间
+  useEffect(() => {
+    if (!st?.locked) return
+    const iv = setInterval(() => {
+      void window.dayflow.hardcoreStatus().then(setSt)
+    }, 30_000)
+    return () => clearInterval(iv)
+  }, [st?.locked])
+
+  const fmtRemaining = (ms: number): string => {
+    if (ms <= 0) return '已到期(可用命令行解锁)'
+    const h = Math.floor(ms / 3600_000)
+    const m = Math.floor((ms % 3600_000) / 60_000)
+    return h > 0 ? `剩 ${h} 小时 ${m} 分钟` : `剩 ${m} 分钟`
+  }
+
+  const enable = (): void => {
+    if (!pw || pw.length < 4) return setMsg('密码至少 4 位')
+    if (pw !== pw2) return setMsg('两次输入的密码不一致')
+    void window.dayflow.hardcoreEnable(pw, hours).then((r) => {
+      if (r.ok) {
+        setPw('')
+        setPw2('')
+        setMsg('')
+      } else {
+        setMsg(r.error ?? '开启失败')
+      }
+      load()
+    })
+  }
+
+  return (
+    <div className="panel">
+      <div className="panel-title">强力监督锁</div>
+      {st?.locked ? (
+        <>
+          <div className="settings-row">
+            <div>
+              <div className="settings-row-label" style={{ color: 'var(--red)' }}>
+                锁定中 · {fmtRemaining(st.remainingMs)}
+              </div>
+              <div className="settings-row-help">
+                退出被拦截:托盘退出、窗口关闭均不可用。到期后在本机命令行执行
+                <code style={{ margin: '0 4px' }}>node tools/dayflowctl.mjs unlock</code>
+                输入密码解锁。注意:任务管理器强杀进程无法阻止,这是一条自我承诺装置。
+              </div>
+            </div>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="settings-row">
+            <div>
+              <div className="settings-row-label">锁定密码</div>
+              <div className="settings-row-help">
+                开启后应用无法退出,直到最短时长结束;届时用命令行 + 此密码解锁。密码只存哈希,忘掉即无法优雅退出。
+              </div>
+            </div>
+            <span style={{ display: 'flex', gap: 6 }}>
+              <input
+                type="password"
+                placeholder="设置密码"
+                value={pw}
+                onChange={(e) => setPw(e.target.value)}
+                style={{ width: 130, padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border-strong)' }}
+              />
+              <input
+                type="password"
+                placeholder="再输一遍"
+                value={pw2}
+                onChange={(e) => setPw2(e.target.value)}
+                style={{ width: 130, padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border-strong)' }}
+              />
+            </span>
+          </div>
+          <div className="settings-row">
+            <div>
+              <div className="settings-row-label">最短锁定时长</div>
+              <div className="settings-row-help">此时间内连命令行也无法解锁。</div>
+            </div>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <input
+                type="number"
+                min={0.5}
+                max={720}
+                step={0.5}
+                value={hours}
+                onChange={(e) => setHours(Math.max(0.5, Math.min(720, Number(e.target.value) || 0.5)))}
+                style={{ width: 90, padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border-strong)' }}
+              />
+              <span className="settings-row-help">小时</span>
+            </span>
+          </div>
+          <div className="settings-row">
+            <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <button className="btn primary small" onClick={enable}>
+                开启强力监督
+              </button>
+              {msg && <span className="settings-row-help">{msg}</span>}
+            </span>
+          </div>
+        </>
       )}
     </div>
   )

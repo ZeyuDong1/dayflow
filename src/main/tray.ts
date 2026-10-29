@@ -2,6 +2,7 @@ import { Tray, Menu, nativeImage, app } from 'electron'
 import { getSettings, saveSettings } from './settings'
 import { restartCapture } from './capture'
 import { getRunningTask, startTask, stopTask } from './tasks'
+import { isLocked, interceptQuit } from './hardcore'
 
 let tray: Tray | null = null
 
@@ -79,7 +80,15 @@ export function updateTray(onOpen: () => void): void {
       }))
     },
     { type: 'separator' },
-    { label: '退出 Dayflow', click: () => app.quit() }
+    {
+      label: isLocked() ? '退出 Dayflow(强力监督中,已禁用)' : '退出 Dayflow',
+      click: () => {
+        // 强力监督锁定中:退出被拦截并弹剩余时间提示
+        const e = { defaultPrevented: false, preventDefault() { this.defaultPrevented = true } }
+        if (isLocked()) interceptQuit(e)
+        else app.quit()
+      }
+    }
   ])
   tray.setContextMenu(menu)
 }
