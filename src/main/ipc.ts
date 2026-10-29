@@ -221,6 +221,7 @@ export function registerIpc(win: BrowserWindow): void {
   // 强力监督锁
   ipcMain.handle('hardcore:status', () => hardcore.status())
   ipcMain.handle('hardcore:enable', (_e, minHours: number) => hardcore.enable(minHours))
+  ipcMain.handle('hardcore:regenerate', () => hardcore.regenerateRecovery())
   // 学习白名单(agent 审批)
   ipcMain.handle('allowances:list', () => allowances.allowanceList())
   ipcMain.handle('allowances:revoke', (_e, id: number) => allowances.allowanceRevoke(id, 'user', ''))

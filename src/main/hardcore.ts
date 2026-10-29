@@ -2,8 +2,10 @@
  * 强力监督锁(用户定):开启后到「最短锁定时长」结束前,应用无法被正常退出——
  * 窗口关闭仍走托盘常驻;托盘退出/App quit 一律拦截;时长内用户自己解不开,
  * 唯一出口是保管人凭紧急解锁码命令行解锁。时长一到自动解锁,无需密码无需聊天。
- * 紧急码在开启时生成写入文件,交给他人保管。防君子不防小人:任务管理器杀进程
- * 挡不住,这是一条自我承诺装置,不是操作系统级防护。
+ * 紧急码首次开启时生成写入文件,交给他人保管;码永久有效(跨锁定周期),用户可
+ * 随时重新生成——旧码立即失效,新码重新交保管人(防自己私留副本)。锁定中禁止
+ * 重新生成(新码会暴露给被锁的自己)。防君子不防小人:任务管理器杀进程挡不住,
+ * 这是一条自我承诺装置,不是操作系统级防护。
  *
  * 状态查询端点:127.0.0.1 /status(端口+token 写在 <userData>/hardcore-unlock.json),
  * 供 CLI 查剩余时间。
@@ -16,6 +18,21 @@ import path from 'path'
 import { db } from './db'
 
 const STORE_KEY = 'hardcore-lock'
+
+/** tutor_events 留痕(表未迁移时静默)。 */
+function logEvent(type: string, detail: string): void {
+  try {
+    db.run('INSERT INTO tutor_events (ts, type, app_name, title, detail) VALUES (?, ?, ?, ?, ?)', [
+      Date.now(),
+      type,
+      null,
+      null,
+      detail
+    ])
+  } catch {
+    // 忽略
+  }
+}
 
 interface HardcoreState {
   enabled: boolean
@@ -53,6 +70,7 @@ export interface HardcoreStatus {
   unlockAfterTs: number
   minHours: number
   remainingMs: number
+  hasRecovery: boolean
 }
 
 /** 锁定状态(查询时顺带触发到时自动解锁)。 */
@@ -62,7 +80,8 @@ export function status(): HardcoreStatus {
     locked: state.enabled,
     unlockAfterTs: state.unlockAfterTs,
     minHours: state.minHours,
-    remainingMs: state.enabled ? Math.max(0, state.unlockAfterTs - Date.now()) : 0
+    remainingMs: state.enabled ? Math.max(0, state.unlockAfterTs - Date.now()) : 0,
+    hasRecovery: !!state.recoverHash
   }
 }
 
@@ -70,41 +89,56 @@ export function status(): HardcoreStatus {
 export function enable(minHours: number): { ok: boolean; error?: string; recoveryCode?: string } {
   if (state.enabled) return { ok: false, error: '已处于强力监督中' }
   if (!(minHours > 0) || minHours > 24 * 30) return { ok: false, error: '时长需在 0-720 小时之间' }
-  const raw = crypto.randomBytes(4).toString('hex').toUpperCase()
-  const code = `${raw.slice(0, 4)}-${raw.slice(4)}`
-  const salt = crypto.randomBytes(16).toString('hex')
-  state = {
-    enabled: true,
-    unlockAfterTs: Date.now() + Math.round(minHours * 3600_000),
-    minHours,
-    recoverSalt: salt,
-    recoverHash: crypto.scryptSync(normCode(code), salt, 32).toString('hex')
+  let code: string | null = null
+  if (!state.recoverHash) {
+    // 首次使用:生成紧急码并写文件;之后沿用,直到用户主动重新生成
+    const raw = crypto.randomBytes(4).toString('hex').toUpperCase()
+    code = `${raw.slice(0, 4)}-${raw.slice(4)}`
+    const salt = crypto.randomBytes(16).toString('hex')
+    state.recoverSalt = salt
+    state.recoverHash = crypto.scryptSync(normCode(code), salt, 32).toString('hex')
+    writeRecoveryFile(code)
   }
+  state.enabled = true
+  state.unlockAfterTs = Date.now() + Math.round(minHours * 3600_000)
+  state.minHours = minHours
   persist()
   startUnlockServer()
   if (!autoTimer) autoTimer = setInterval(maybeAutoUnlock, 30_000)
-  try {
-    fs.writeFileSync(
-      recoveryFilePath(),
-      [
-        'Dayflow 强力监督 · 紧急解锁码',
-        '',
-        `解锁码:${code}`,
-        '生成时间:' + new Date().toLocaleString('zh-CN'),
-        `最短锁定至:${new Date(state.unlockAfterTs).toLocaleString('zh-CN')}`,
-        '',
-        '用法(在用户的电脑上命令行执行):',
-        '  node tools/dayflowctl.mjs recover ' + code,
-        '',
-        '任何时刻可用,不受最短锁定时长限制——请交给信得过的人保管;',
-        '用户本人请删除这份本地副本,否则等于没有锁。',
-        '',
-        '常规出口(无需此码):最短时长结束后,在 Dayflow 对话页找导师小舟聊天,她同意即解锁。'
-      ].join('\n')
-    )
-  } catch {
-    // 文件写失败不阻断开启;码仍会在设置面板一次性展示
-  }
+  return { ok: true, recoveryCode: code ?? undefined }
+}
+
+/** 紧急码文件内容。 */
+function writeRecoveryFile(code: string): void {
+  fs.writeFileSync(
+    recoveryFilePath(),
+    [
+      'Dayflow 强力监督 · 紧急解锁码',
+      '',
+      `解锁码:${code}`,
+      '生成时间:' + new Date().toLocaleString('zh-CN'),
+      '',
+      '长期有效(直到被重新生成),任何时刻可用,不受最短锁定时长限制。',
+      '用法(在用户的电脑上命令行执行):',
+      '  node tools/dayflowctl.mjs recover ' + code,
+      '',
+      '请交给信得过的人保管;用户本人请删除这份本地副本,否则等于没有锁。',
+      '用户可随时要求重新生成——旧码立即失效,把新码重新交给保管人即可。'
+    ].join('\n')
+  )
+}
+
+/** 重新生成紧急解锁码:旧码立即失效。锁定中禁止(新码会暴露给被锁的自己)。 */
+export function regenerateRecovery(): { ok: boolean; error?: string; recoveryCode?: string } {
+  if (state.enabled) return { ok: false, error: '锁定中不能重新生成紧急码' }
+  const raw = crypto.randomBytes(4).toString('hex').toUpperCase()
+  const code = `${raw.slice(0, 4)}-${raw.slice(4)}`
+  const salt = crypto.randomBytes(16).toString('hex')
+  state.recoverSalt = salt
+  state.recoverHash = crypto.scryptSync(normCode(code), salt, 32).toString('hex')
+  persist()
+  writeRecoveryFile(code)
+  logEvent('recovery-regenerate', '')
   return { ok: true, recoveryCode: code }
 }
 
@@ -130,18 +164,13 @@ export function tryRecovery(code: string): { ok: boolean; error?: string } {
 
 function doUnlock(): void {
   state.enabled = false
-  state.recoverHash = null
   persist()
   if (autoTimer) {
     clearInterval(autoTimer)
     autoTimer = null
   }
   stopUnlockServer()
-  try {
-    fs.unlinkSync(recoveryFilePath())
-  } catch {
-    // 已不存在
-  }
+  // 紧急码保留:码永久有效,跨锁定周期复用,直到用户主动重新生成
   onUnlockedCb?.()
 }
 
